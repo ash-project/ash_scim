@@ -12,3 +12,12 @@ path = "demo/**"
 precedence = "aggregate"
 SPDX-FileCopyrightText = "2026 Zach Daniel"
 SPDX-License-Identifier = "MIT"
+
+# Auto-generated DSL reference docs are emitted by `mix spark.cheat_sheets`
+# without a header. Cover them in bulk rather than rewriting on every
+# regeneration.
+[[annotations]]
+path = "documentation/dsls/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Zach Daniel"
+SPDX-License-Identifier = "MIT"

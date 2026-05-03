@@ -7,7 +7,8 @@ defmodule AshScim.RouterTest do
   # between cases.
   use ExUnit.Case, async: false
 
-  use Plug.Test
+  import Plug.Conn
+  import Plug.Test
 
   alias AshScim.Test.Example.{Domain, Group, User}
 

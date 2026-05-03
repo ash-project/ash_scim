@@ -21,7 +21,8 @@ defmodule AshScim.RouterAuthContextTest do
 
   use ExUnit.Case, async: false
 
-  use Plug.Test
+  import Plug.Conn
+  import Plug.Test
 
   alias AshAuthentication.Jwt
   alias AshScim.Test.SourceExample.{Auth, Domain, Token, User}

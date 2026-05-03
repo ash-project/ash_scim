@@ -33,11 +33,6 @@ jobs:
     env:
       MIX_ENV: dev
       PORT: "4002"
-      # Lower the success/error thresholds in one place. See the README's
-      # "Multi-valued attributes" section for why a small number of errors
-      # is expected from the demo's User.email = identity model.
-      MIN_SUCCESS: "51"
-      MAX_ERROR: "3"
 
     steps:
       - uses: actions/checkout@v4
@@ -103,27 +98,18 @@ jobs:
         id: compliance
         working-directory: demo
         run: |
-          # `scim test` exits non-zero when any individual check fails — but
-          # we gate on aggregate counts (MIN_SUCCESS / MAX_ERROR), not on
-          # whether every check passes. So swallow scim's exit code with
-          # `|| true` and let the threshold check below decide.
+          # Capture full output so it's archived on failure, then re-run the
+          # check via the exit code so any failing check fails this job.
           TOKEN=$(cat scim_token.txt)
           scim -u http://localhost:4002/scim/v2 -h "Authorization:Bearer $TOKEN" test \
-            > compliance.txt 2>&1 || true
-          cat compliance.txt
+            | tee compliance.txt
           successes=$(grep -c "^SUCCESS" compliance.txt || true)
           errors=$(grep -c "^ERROR" compliance.txt || true)
-          echo "successes=$successes" >> $GITHUB_OUTPUT
-          echo "errors=$errors" >> $GITHUB_OUTPUT
           echo ""
-          echo "Successes: $successes (min $MIN_SUCCESS)"
-          echo "Errors:    $errors (max $MAX_ERROR)"
-          if [ "$successes" -lt "$MIN_SUCCESS" ]; then
-            echo "::error::Compliance regressed: $successes < $MIN_SUCCESS successes"
-            exit 1
-          fi
-          if [ "$errors" -gt "$MAX_ERROR" ]; then
-            echo "::error::Compliance regressed: $errors > $MAX_ERROR errors"
+          echo "Successes: $successes"
+          echo "Errors:    $errors"
+          if [ "$errors" -gt 0 ]; then
+            echo "::error::Compliance failed: $errors error(s)"
             exit 1
           fi
 

@@ -6,7 +6,8 @@ defmodule AshScim.RouterGroupsTest do
   # ETS data layer is process-shared.
   use ExUnit.Case, async: false
 
-  use Plug.Test
+  import Plug.Conn
+  import Plug.Test
 
   alias AshScim.Test.Example.{Domain, Group, Membership}
 

@@ -152,7 +152,7 @@ defmodule AshScim.Filter do
     lower = String.downcase(word)
 
     cond do
-      lower in @comp_ops -> {:comp_op, String.to_atom(lower)}
+      lower in @comp_ops -> {:comp_op, String.to_existing_atom(lower)}
       lower == "pr" -> {:pr, :pr}
       lower == "and" -> {:and, :and}
       lower == "or" -> {:or, :or}
@@ -221,9 +221,8 @@ defmodule AshScim.Filter do
   defp collect_and(acc, rest, _ctx), do: {:ok, %{and: Enum.reverse(acc)}, rest}
 
   defp parse_unary([{:not, _}, {:lparen, _} | rest], ctx) do
-    with {:ok, inner, [{:rparen, _} | rest2]} <- parse_or(rest, ctx) do
-      {:ok, %{not: inner}, rest2}
-    else
+    case parse_or(rest, ctx) do
+      {:ok, inner, [{:rparen, _} | rest2]} -> {:ok, %{not: inner}, rest2}
       {:ok, _, _} -> {:error, "expected `)` after `not (...`"}
       err -> err
     end
@@ -232,9 +231,8 @@ defmodule AshScim.Filter do
   defp parse_unary([{:not, _} | _], _), do: {:error, "expected `(` after `not`"}
 
   defp parse_unary([{:lparen, _} | rest], ctx) do
-    with {:ok, inner, [{:rparen, _} | rest2]} <- parse_or(rest, ctx) do
-      {:ok, inner, rest2}
-    else
+    case parse_or(rest, ctx) do
+      {:ok, inner, [{:rparen, _} | rest2]} -> {:ok, inner, rest2}
       {:ok, _, _} -> {:error, "expected `)`"}
       err -> err
     end

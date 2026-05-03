@@ -15,6 +15,7 @@ spark_locals_without_parens = [
   multivalued: 1,
   multivalued: 2,
   mutability: 1,
+  on_remove: 1,
   path: 1,
   read_action: 1,
   relationship: 1,

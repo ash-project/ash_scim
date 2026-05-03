@@ -353,33 +353,34 @@ defmodule AshScim.Router do
     conn = Plug.Conn.fetch_query_params(conn)
     env = scim_env(conn)
 
-    with {:ok, query, page} <- build_index_query(conn, resource, env) do
-      total =
-        case Ash.count(query, scim_opts([], env)) do
-          {:ok, count} -> count
-          {:error, _} -> nil
+    case build_index_query(conn, resource, env) do
+      {:ok, query, page} ->
+        total =
+          case Ash.count(query, scim_opts([], env)) do
+            {:ok, count} -> count
+            {:error, _} -> nil
+          end
+
+        paged_query = query |> Ash.Query.offset(page.offset) |> Ash.Query.limit(page.limit)
+
+        case Ash.read(paged_query, scim_opts([], env)) do
+          {:ok, records} ->
+            encoded = Enum.map(records, &encode_and_project(conn, &1, opts))
+
+            send_json(
+              conn,
+              200,
+              Encoder.list_response(encoded,
+                total_results: total || length(encoded),
+                start_index: page.start_index,
+                items_per_page: length(encoded)
+              )
+            )
+
+          {:error, error} ->
+            send_error(conn, 500, Exception.message(error))
         end
 
-      paged_query = query |> Ash.Query.offset(page.offset) |> Ash.Query.limit(page.limit)
-
-      case Ash.read(paged_query, scim_opts([], env)) do
-        {:ok, records} ->
-          encoded = Enum.map(records, &encode_and_project(conn, &1, opts))
-
-          send_json(
-            conn,
-            200,
-            Encoder.list_response(encoded,
-              total_results: total || length(encoded),
-              start_index: page.start_index,
-              items_per_page: length(encoded)
-            )
-          )
-
-        {:error, error} ->
-          send_error(conn, 500, Exception.message(error))
-      end
-    else
       {:error, {:invalid_filter, reason}} ->
         send_error(conn, 400, "invalid filter: #{reason}", :invalidFilter)
 
@@ -494,6 +495,9 @@ defmodule AshScim.Router do
           {:error, {:invalid_path, path}} ->
             send_error(conn, 400, "invalid PATCH path: `#{path}`", :invalidPath)
 
+          {:error, {:mutability, name}} ->
+            send_error(conn, 400, "attribute `#{name}` cannot be removed", :mutability)
+
           {:error, reason} when is_binary(reason) ->
             send_error(conn, 400, reason, :invalidSyntax)
 
@@ -510,27 +514,28 @@ defmodule AshScim.Router do
   # return value in `{:ok, ...}` and rolls back on `{:error, _}`. So we
   # return the record directly on success, and `{:error, _}` to abort.
   defp apply_patch_in_transaction(resource, id, attrs, rel_ops, env) do
-    case fetch_for_patch(resource, id, env) do
-      {:ok, record} ->
-        {manage_ops, post_update_ops} = split_relationship_ops(rel_ops)
+    with {:ok, record} <- fetch_for_patch(resource, id, env) do
+      {manage_ops, post_update_ops} = split_relationship_ops(rel_ops)
+      apply_patch_changes(record, resource, attrs, manage_ops, post_update_ops, env)
+    end
+  end
 
-        record
-        |> Ash.Changeset.for_update(update_action(resource), attrs, scim_changeset_opts(env))
-        |> apply_manage_ops(manage_ops)
-        |> Ash.update(scim_opts([], env))
-        |> case do
-          {:ok, updated} ->
-            case apply_post_update_ops(updated, post_update_ops, env) do
-              :ok -> reload_for_response(updated, manage_ops ++ post_update_ops, env)
-              {:error, _} = err -> err
-            end
+  # Nothing to apply — e.g. every op was an `on_remove: :ignore` remove. Skip
+  # the update entirely; running `Ash.update` with no changes still invokes
+  # the action and can fail validation on required attributes that the noop
+  # op would otherwise touch.
+  defp apply_patch_changes(record, _resource, attrs, [] = _manage, [] = _post, _env)
+       when attrs == %{},
+       do: record
 
-          {:error, _} = err ->
-            err
-        end
-
-      {:error, _} = err ->
-        err
+  defp apply_patch_changes(record, resource, attrs, manage_ops, post_update_ops, env) do
+    with {:ok, updated} <-
+           record
+           |> Ash.Changeset.for_update(update_action(resource), attrs, scim_changeset_opts(env))
+           |> apply_manage_ops(manage_ops)
+           |> Ash.update(scim_opts([], env)),
+         :ok <- apply_post_update_ops(updated, post_update_ops, env) do
+      reload_for_response(updated, manage_ops ++ post_update_ops, env)
     end
   end
 

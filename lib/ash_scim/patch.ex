@@ -104,14 +104,12 @@ defmodule AshScim.Patch do
 
   # add/replace with no path → decode value as a partial SCIM resource.
   defp do_op(op, nil, value, resource) when op in [:add, :replace] do
-    cond do
-      is_map(value) ->
-        decoded = Decoder.decode(resource, value)
-        # Path-less ops only carry attribute changes for now.
-        {:ok, %{attrs: decoded.attrs, relationships: []}}
-
-      true ->
-        {:error, "#{op} without a path requires an object value"}
+    if is_map(value) do
+      decoded = Decoder.decode(resource, value)
+      # Path-less ops only carry attribute changes for now.
+      {:ok, %{attrs: decoded.attrs, relationships: []}}
+    else
+      {:error, "#{op} without a path requires an object value"}
     end
   end
 
@@ -183,12 +181,34 @@ defmodule AshScim.Patch do
   # here. Walk the multivalued's sub-maps to extract the target Ash
   # attribute(s) from the chosen array element (preferring the entry
   # marked `primary: true`, falling back to the first).
-  defp apply_single_attr_multivalued_op(:remove, %Multivalued{maps: maps}, _value, _resource, _path, _parsed) do
-    attrs = clear_attrs_for(maps)
-    {:ok, %{attrs: attrs, relationships: []}}
+  #
+  # Remove handling is dispatched by the multivalued's `on_remove` option:
+  # `:set_nil` writes nil to each backing attribute, `:ignore` silently
+  # succeeds without touching the data, `:reject` returns a 400 mutability
+  # SCIM error.
+  defp apply_single_attr_multivalued_op(
+         :remove,
+         %Multivalued{} = mv,
+         _value,
+         _resource,
+         _path,
+         _parsed
+       ) do
+    case mv.on_remove do
+      :ignore -> {:ok, %{attrs: %{}, relationships: []}}
+      :reject -> {:error, {:mutability, mv.name}}
+      :set_nil -> {:ok, %{attrs: clear_attrs_for(mv.maps), relationships: []}}
+    end
   end
 
-  defp apply_single_attr_multivalued_op(_op, %Multivalued{maps: maps}, value, _resource, _path, _parsed)
+  defp apply_single_attr_multivalued_op(
+         _op,
+         %Multivalued{maps: maps},
+         value,
+         _resource,
+         _path,
+         _parsed
+       )
        when is_list(value) do
     case pick_primary_or_first(value) do
       nil ->

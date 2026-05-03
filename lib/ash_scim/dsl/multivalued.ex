@@ -16,13 +16,24 @@ defmodule AshScim.Dsl.Multivalued do
   has_many-style mappings.
   """
 
-  defstruct [:name, :relationship, :returned, :mutability, maps: [], __spark_metadata__: nil]
+  defstruct [
+    :name,
+    :relationship,
+    :returned,
+    :mutability,
+    on_remove: :set_nil,
+    maps: [],
+    __spark_metadata__: nil
+  ]
+
+  @type on_remove :: :set_nil | :ignore | :reject
 
   @type t :: %__MODULE__{
           name: atom(),
           relationship: atom() | nil,
           returned: :always | :never | :default | :request | nil,
           mutability: :read_only | :read_write | :immutable | :write_only | nil,
+          on_remove: on_remove(),
           maps: [AshScim.Dsl.Map.t()]
         }
 
@@ -53,6 +64,26 @@ defmodule AshScim.Dsl.Multivalued do
     mutability: [
       type: {:in, [:read_only, :read_write, :immutable, :write_only]},
       doc: "RFC 7643 `mutability`. Defaults to `:read_write`."
+    ],
+    on_remove: [
+      type: {:in, [:set_nil, :ignore, :reject]},
+      default: :set_nil,
+      doc: """
+      How to handle PATCH `remove` on this multivalued (only meaningful for
+      single-attribute-backed multivalueds; relationship-backed always
+      destroys the related rows).
+
+        * `:set_nil` (default) — set the underlying Ash attribute(s) to
+          `nil`. Fails with `400 invalidValue` if the attribute is
+          `allow_nil?: false`.
+        * `:ignore` — silently succeed without touching the data. Useful
+          for required identity fields (e.g. `email`) where the IdP's
+          remove semantics don't fit your model but you don't want to
+          surface the conflict to the IdP.
+        * `:reject` — return a `400 mutability` SCIM error explicitly.
+          Tells the IdP "this attribute can't be removed" without the
+          ambiguity of `invalidValue`.
+      """
     ]
   ]
 

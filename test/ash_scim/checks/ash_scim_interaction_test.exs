@@ -7,7 +7,8 @@ defmodule AshScim.Checks.AshScimInteractionTest do
   # data layer via the router.
   use ExUnit.Case, async: false
 
-  use Plug.Test
+  import Plug.Conn
+  import Plug.Test
 
   alias AshScim.Test.PolicyExample
 

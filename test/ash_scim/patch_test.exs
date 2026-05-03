@@ -280,7 +280,7 @@ defmodule AshScim.PatchTest do
               }} = Patch.to_params(body(ops), Group)
     end
 
-    test "`remove path: \"members[value eq \\\"u1\\\"]\"` produces a :remove_where op with the resolved filter" do
+    test ~s(`remove path: "members[value eq \\"u1\\"]"` produces a :remove_where op with the resolved filter) do
       ops = [
         %{"op" => "remove", "path" => ~S(members[value eq "u1"])}
       ]

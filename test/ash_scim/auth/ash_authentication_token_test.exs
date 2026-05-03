@@ -7,7 +7,8 @@ defmodule AshScim.Auth.AshAuthenticationTokenTest do
   # process-shared.
   use ExUnit.Case, async: false
 
-  use Plug.Test
+  import Plug.Conn
+  import Plug.Test
 
   alias AshAuthentication.{Jwt, TokenResource}
   alias AshScim.Auth.AshAuthenticationToken

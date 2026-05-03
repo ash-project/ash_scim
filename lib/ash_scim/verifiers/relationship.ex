@@ -49,9 +49,8 @@ defmodule AshScim.Verifiers.Relationship do
     rel_def = Ash.Resource.Info.relationship(dsl_state, rel)
 
     with :ok <- ensure_relationship(rel_def, rel, name, resource),
-         :ok <- ensure_has_many(rel_def, rel, name, resource),
-         :ok <- ensure_sub_attributes(rel_def, name, maps, resource) do
-      :ok
+         :ok <- ensure_has_many(rel_def, rel, name, resource) do
+      ensure_sub_attributes(rel_def, name, maps, resource)
     end
   end
 

@@ -33,6 +33,10 @@ defmodule AshScimDemo.Accounts.User do
     end
 
     multivalued :emails do
+      # `:email` is the user's identity (required + unique). PATCH `remove
+      # path: "emails"` is honoured as a no-op since dropping the email
+      # would invalidate the user record.
+      on_remove :ignore
       map :value, attribute: :email
       map :primary, value: true
       map :type, value: "work"
