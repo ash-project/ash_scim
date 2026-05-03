@@ -12,11 +12,11 @@ defmodule AshScim.Test.AuthExample.User do
 
   authentication do
     tokens do
-      enabled? true
-      token_resource AshScim.Test.AuthExample.Token
-      signing_secret AshScim.Test.AuthExample.Secrets
-      store_all_tokens? true
-      require_token_presence_for_authentication? true
+      enabled?(true)
+      token_resource(AshScim.Test.AuthExample.Token)
+      signing_secret(AshScim.Test.AuthExample.Secrets)
+      store_all_tokens?(true)
+      require_token_presence_for_authentication?(true)
     end
   end
 
@@ -26,15 +26,15 @@ defmodule AshScim.Test.AuthExample.User do
     map :externalId, attribute: :scim_external_id
   end
 
+  actions do
+    defaults [:read, :destroy, create: :*, update: :*]
+  end
+
   attributes do
     uuid_primary_key :id
     attribute :email, :ci_string, allow_nil?: false, public?: true
     attribute :active, :boolean, default: true, public?: true
     attribute :scim_external_id, :string, public?: true
-  end
-
-  actions do
-    defaults [:read, :destroy, create: :*, update: :*]
   end
 
   identities do

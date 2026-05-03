@@ -154,10 +154,19 @@ defmodule AshScim.Patch do
   end
 
   # Bare path that resolves to a Complex — `add path: "name" value: {givenName: ...}`.
-  defp apply_parsed_op(op, %Path{attribute: attr_str, sub_attribute: nil} = _parsed, value, resource, path) do
+  defp apply_parsed_op(
+         op,
+         %Path{attribute: attr_str, sub_attribute: nil} = _parsed,
+         value,
+         resource,
+         path
+       ) do
     case find_complex(attr_str, resource) do
-      %Complex{} = c -> apply_complex_op(op, c, value)
-      nil -> apply_simple_op(op, %Path{attribute: attr_str, sub_attribute: nil}, value, resource, path)
+      %Complex{} = c ->
+        apply_complex_op(op, c, value)
+
+      nil ->
+        apply_simple_op(op, %Path{attribute: attr_str, sub_attribute: nil}, value, resource, path)
     end
   end
 

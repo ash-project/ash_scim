@@ -22,12 +22,6 @@ defmodule AshScim.Test.PolicyExample.User do
     map :externalId, attribute: :scim_external_id
   end
 
-  attributes do
-    uuid_primary_key :id
-    attribute :email, :ci_string, allow_nil?: false, public?: true
-    attribute :scim_external_id, :string, public?: true
-  end
-
   actions do
     defaults [:read, :destroy, create: :*]
 
@@ -47,6 +41,12 @@ defmodule AshScim.Test.PolicyExample.User do
       # Without the bypass above, every operation on this resource is denied.
       forbid_if always()
     end
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :email, :ci_string, allow_nil?: false, public?: true
+    attribute :scim_external_id, :string, public?: true
   end
 
   identities do

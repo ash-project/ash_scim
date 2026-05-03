@@ -27,6 +27,10 @@ defmodule AshScim.Test.Example.User do
     end
   end
 
+  actions do
+    defaults [:read, :destroy, create: :*, update: :*]
+  end
+
   attributes do
     uuid_primary_key :id
     attribute :email, :ci_string, allow_nil?: false, public?: true
@@ -34,9 +38,5 @@ defmodule AshScim.Test.Example.User do
     attribute :first_name, :string, public?: true
     attribute :last_name, :string, public?: true
     attribute :scim_external_id, :string, public?: true
-  end
-
-  actions do
-    defaults [:read, :destroy, create: :*, update: :*]
   end
 end

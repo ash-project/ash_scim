@@ -97,7 +97,11 @@ defmodule AshScim.RouterTest do
              } = body(conn)
 
       assert length(resources) == 2
-      assert Enum.all?(resources, &(&1["schemas"] == ["urn:ietf:params:scim:schemas:core:2.0:User"]))
+
+      assert Enum.all?(
+               resources,
+               &(&1["schemas"] == ["urn:ietf:params:scim:schemas:core:2.0:User"])
+             )
     end
 
     test "applies a filter when ?filter= is provided" do
@@ -130,7 +134,8 @@ defmodule AshScim.RouterTest do
 
   describe "GET /<type> pagination, sorting, projection" do
     setup do
-      _ = create_user!(email: "alice@example.com", scim_external_id: "okta-1", first_name: "Alice")
+      _ =
+        create_user!(email: "alice@example.com", scim_external_id: "okta-1", first_name: "Alice")
 
       _ =
         create_user!(email: "bob@example.com", scim_external_id: "okta-2", first_name: "Bob")

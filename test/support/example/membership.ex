@@ -9,14 +9,14 @@ defmodule AshScim.Test.Example.Membership do
     domain: AshScim.Test.Example.Domain,
     data_layer: Ash.DataLayer.Ets
 
+  actions do
+    defaults [:read, :destroy, create: :*, update: :*]
+  end
+
   attributes do
     uuid_primary_key :id
     attribute :user_id, :string, allow_nil?: false, public?: true
     attribute :group_id, :uuid, allow_nil?: false, public?: true
-  end
-
-  actions do
-    defaults [:read, :destroy, create: :*, update: :*]
   end
 
   identities do

@@ -18,9 +18,14 @@ defmodule AshScim.FilterTest do
       assert {:ok, %{email: %{not_eq: "x"}}} = Filter.parse(~S/userName ne "x"/, User)
       assert {:ok, %{email: %{contains: "li"}}} = Filter.parse(~S/userName co "li"/, User)
       assert {:ok, %{active: %{greater_than: true}}} = Filter.parse(~S/active gt true/, User)
-      assert {:ok, %{active: %{greater_than_or_equal: true}}} = Filter.parse(~S/active ge true/, User)
+
+      assert {:ok, %{active: %{greater_than_or_equal: true}}} =
+               Filter.parse(~S/active ge true/, User)
+
       assert {:ok, %{active: %{less_than: false}}} = Filter.parse(~S/active lt false/, User)
-      assert {:ok, %{active: %{less_than_or_equal: false}}} = Filter.parse(~S/active le false/, User)
+
+      assert {:ok, %{active: %{less_than_or_equal: false}}} =
+               Filter.parse(~S/active le false/, User)
     end
 
     test "translates `pr` to is_nil: false" do

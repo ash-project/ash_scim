@@ -87,8 +87,12 @@ defmodule AshScim.Projection do
   defp remove(resource, paths) do
     Enum.reduce(paths, resource, fn path, acc ->
       case String.split(path, ".") do
-        [top] when top in @always_returned -> acc
-        [top] -> Map.delete(acc, top)
+        [top] when top in @always_returned ->
+          acc
+
+        [top] ->
+          Map.delete(acc, top)
+
         [top, sub | _] ->
           case Map.get(acc, top) do
             inner when is_map(inner) -> Map.put(acc, top, Map.delete(inner, sub))

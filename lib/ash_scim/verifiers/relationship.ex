@@ -41,7 +41,11 @@ defmodule AshScim.Verifiers.Relationship do
     end)
   end
 
-  defp verify_multivalued(%Multivalued{name: name, relationship: rel, maps: maps}, dsl_state, resource) do
+  defp verify_multivalued(
+         %Multivalued{name: name, relationship: rel, maps: maps},
+         dsl_state,
+         resource
+       ) do
     rel_def = Ash.Resource.Info.relationship(dsl_state, rel)
 
     with :ok <- ensure_relationship(rel_def, rel, name, resource),

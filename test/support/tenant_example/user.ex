@@ -17,24 +17,9 @@ defmodule AshScim.Test.TenantExample.User do
     data_layer: Ash.DataLayer.Ets,
     extensions: [AshScim.User]
 
-  multitenancy do
-    strategy :attribute
-    attribute :tenant_id
-    global? false
-  end
-
   scim do
-    map :userName,   attribute: :email
+    map :userName, attribute: :email
     map :externalId, attribute: :scim_external_id
-  end
-
-  attributes do
-    uuid_primary_key :id
-    # Not public, not in `accept :*`. Attribute multitenancy auto-sets it
-    # from the changeset's tenant before validations run.
-    attribute :tenant_id, :string, allow_nil?: false
-    attribute :email, :ci_string, allow_nil?: false, public?: true
-    attribute :scim_external_id, :string, public?: true
   end
 
   actions do
@@ -47,8 +32,22 @@ defmodule AshScim.Test.TenantExample.User do
     end
   end
 
+  multitenancy do
+    strategy :attribute
+    attribute :tenant_id
+    global? false
+  end
+
+  attributes do
+    uuid_primary_key :id
+    # Not public, not in `accept :*`. Attribute multitenancy auto-sets it
+    # from the changeset's tenant before validations run.
+    attribute :tenant_id, :string, allow_nil?: false
+    attribute :email, :ci_string, allow_nil?: false, public?: true
+    attribute :scim_external_id, :string, public?: true
+  end
+
   identities do
-    identity :unique_email_per_tenant, [:email],
-      pre_check_with: AshScim.Test.TenantExample.Domain
+    identity :unique_email_per_tenant, [:email], pre_check_with: AshScim.Test.TenantExample.Domain
   end
 end

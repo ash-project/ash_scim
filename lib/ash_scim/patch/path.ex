@@ -80,7 +80,8 @@ defmodule AshScim.Patch.Path do
   # then emits Ash's nested map form (`%{rel => %{ash_attr => predicate}}`)
   # which we unwrap to the inner sub-filter for application against the
   # related resource.
-  defp maybe_parse_filter(filter_string, resource, attr, rel) when is_atom(rel) and not is_nil(rel) do
+  defp maybe_parse_filter(filter_string, resource, attr, rel)
+       when is_atom(rel) and not is_nil(rel) do
     with {:ok, filter} <- AshScim.Filter.parse(filter_string, resource, prefix: [attr]) do
       {:ok, Elixir.Map.get(filter, rel)}
     end

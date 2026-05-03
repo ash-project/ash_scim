@@ -438,7 +438,11 @@ defmodule AshScim.Router do
         case Ash.get(resource, id, scim_opts([], env)) do
           {:ok, record} ->
             record
-            |> Ash.Changeset.for_update(update_action(resource), decoded.attrs, scim_changeset_opts(env))
+            |> Ash.Changeset.for_update(
+              update_action(resource),
+              decoded.attrs,
+              scim_changeset_opts(env)
+            )
             |> apply_relationship_inputs(decoded.relationships)
             |> Ash.update(scim_opts([], env))
             |> case do
@@ -765,7 +769,10 @@ defmodule AshScim.Router do
   end
 
   defp not_found_error?(%Ash.Error.Query.NotFound{}), do: true
-  defp not_found_error?(%Ash.Error.Invalid{errors: errors}), do: Enum.any?(errors, &not_found_error?/1)
+
+  defp not_found_error?(%Ash.Error.Invalid{errors: errors}),
+    do: Enum.any?(errors, &not_found_error?/1)
+
   defp not_found_error?(_), do: false
 
   defp normalise_destroy(:ok), do: :ok
@@ -924,7 +931,8 @@ defmodule AshScim.Router do
 
   # For inbound POST/PUT bodies that include a relationship-backed
   # multivalued attribute, apply each as a full-replace via manage_relationship.
-  defp apply_relationship_inputs(changeset, relationships) when relationships == %{}, do: changeset
+  defp apply_relationship_inputs(changeset, relationships) when relationships == %{},
+    do: changeset
 
   defp apply_relationship_inputs(changeset, relationships) do
     Enum.reduce(relationships, changeset, fn {rel, inputs}, cs ->

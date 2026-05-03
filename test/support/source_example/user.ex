@@ -26,11 +26,11 @@ defmodule AshScim.Test.SourceExample.User do
 
   authentication do
     tokens do
-      enabled? true
-      token_resource AshScim.Test.SourceExample.Token
-      signing_secret AshScim.Test.SourceExample.Secrets
-      store_all_tokens? true
-      require_token_presence_for_authentication? true
+      enabled?(true)
+      token_resource(AshScim.Test.SourceExample.Token)
+      signing_secret(AshScim.Test.SourceExample.Secrets)
+      store_all_tokens?(true)
+      require_token_presence_for_authentication?(true)
     end
   end
 
@@ -39,13 +39,6 @@ defmodule AshScim.Test.SourceExample.User do
     map :externalId, attribute: :scim_external_id
 
     read_action :scoped_read
-  end
-
-  attributes do
-    uuid_primary_key :id
-    attribute :email, :ci_string, allow_nil?: false, public?: true
-    attribute :scim_external_id, :string, public?: true
-    attribute :scim_source, :string, allow_nil?: false, public?: true
   end
 
   actions do
@@ -77,6 +70,13 @@ defmodule AshScim.Test.SourceExample.User do
       get? true
       prepare AshAuthentication.Preparations.FilterBySubject
     end
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :email, :ci_string, allow_nil?: false, public?: true
+    attribute :scim_external_id, :string, public?: true
+    attribute :scim_source, :string, allow_nil?: false, public?: true
   end
 
   identities do

@@ -18,7 +18,9 @@ defmodule AshScim.Checks.AshScimInteractionTest do
         )
 
   setup do
-    for record <- Ash.read!(PolicyExample.User, authorize?: false), do: Ash.destroy!(record, authorize?: false)
+    for record <- Ash.read!(PolicyExample.User, authorize?: false),
+        do: Ash.destroy!(record, authorize?: false)
+
     :ok
   end
 

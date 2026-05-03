@@ -42,8 +42,7 @@ defmodule AshScim.MixProject do
       links: %{
         "Source" => "https://github.com/ash-project/ash_scim",
         "Changelog" => "https://github.com/ash-project/ash_scim/blob/main/CHANGELOG.md",
-        "REUSE Compliance" =>
-          "https://api.reuse.software/info/github.com/ash-project/ash_scim"
+        "REUSE Compliance" => "https://api.reuse.software/info/github.com/ash-project/ash_scim"
       },
       source_url: "https://github.com/ash-project/ash_scim",
       files:
@@ -111,8 +110,7 @@ defmodule AshScim.MixProject do
         String.starts_with?(inspect(mod), "AshScim") ||
           String.starts_with?(inspect(mod), "Mix.Task")
       end,
-      source_url_pattern:
-        "https://github.com/ash-project/ash_scim/blob/main/%{path}#L%{line}",
+      source_url_pattern: "https://github.com/ash-project/ash_scim/blob/main/%{path}#L%{line}",
       groups_for_modules: [
         Internals: ~r/.*/
       ]

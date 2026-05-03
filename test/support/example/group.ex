@@ -20,12 +20,6 @@ defmodule AshScim.Test.Example.Group do
     end
   end
 
-  attributes do
-    uuid_primary_key :id
-    attribute :name, :string, allow_nil?: false, public?: true
-    attribute :scim_external_id, :string, public?: true
-  end
-
   actions do
     defaults [:read, :destroy, create: :*]
 
@@ -34,6 +28,12 @@ defmodule AshScim.Test.Example.Group do
       accept :*
       require_atomic? false
     end
+  end
+
+  attributes do
+    uuid_primary_key :id
+    attribute :name, :string, allow_nil?: false, public?: true
+    attribute :scim_external_id, :string, public?: true
   end
 
   relationships do
