@@ -11,20 +11,6 @@ exercise. A handful of corners aren't implemented yet — none of them
 prevent typical Okta or Azure AD provisioning flows from working, but
 they're worth knowing about.
 
-## `sw` / `ew` filter operators
-
-[RFC 7644 §3.4.2.2](https://datatracker.ietf.org/doc/html/rfc7644#section-3.4.2.2)
-defines `sw` (starts with) and `ew` (ends with) operators alongside
-`eq`/`ne`/`co`. They appear almost exclusively in admin search UIs, not
-in IdP-to-server provisioning. Filters using them currently return
-`400 invalidValue`.
-
-If you have a real customer using them, opening an issue with the IdP
-and the exact request will help us pick the right Ash-side
-implementation (the natural choices are an `Ash.Expr` fragment or a
-data-layer-specific function, and the right answer depends on which
-data layers are common among AshScim users).
-
 ## Per-element `replace` via bracket filter on relationship-backed multivalueds
 
 `replace path: "members[value eq \"u1\"].value"` — meaning "change the

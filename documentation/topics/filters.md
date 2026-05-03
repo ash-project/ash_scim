@@ -21,16 +21,13 @@ resolution done in the same pass.
 | `eq` | `eq` | `userName eq "alice"` |
 | `ne` | `not_eq` | `active ne true` |
 | `co` | `contains` | `userName co "alice"` |
+| `sw` | `string_starts_with?` | `userName sw "alice"` |
+| `ew` | `string_ends_with?` | `userName ew "@example.com"` |
 | `pr` | `is_nil: false` | `externalId pr` |
 | `gt` | `greater_than` | `created gt "2024-01-01"` |
 | `ge` | `greater_than_or_equal` | `created ge "2024-01-01"` |
 | `lt` | `less_than` | `created lt "2024-12-31"` |
 | `le` | `less_than_or_equal` | `created le "2024-12-31"` |
-
-`sw` (starts with) and `ew` (ends with) are not currently implemented.
-They appear almost exclusively in admin search UIs, not in
-IdP-to-server provisioning, so the practical impact is nil. Filters using
-them return `400 invalidValue`.
 
 ## Boolean composition
 

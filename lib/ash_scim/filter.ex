@@ -32,13 +32,13 @@ defmodule AshScim.Filter do
   | `eq` | `eq` |
   | `ne` | `not_eq` |
   | `co` | `contains` |
+  | `sw` | `string_starts_with?` |
+  | `ew` | `string_ends_with?` |
   | `pr` | `is_nil: false` |
   | `gt` | `greater_than` |
   | `ge` | `greater_than_or_equal` |
   | `lt` | `less_than` |
   | `le` | `less_than_or_equal` |
-
-  `sw` and `ew` are not yet supported.
   """
 
   alias AshScim.Dsl.{Complex, Map, Multivalued}
@@ -48,6 +48,8 @@ defmodule AshScim.Filter do
     eq: :eq,
     ne: :not_eq,
     co: :contains,
+    sw: :string_starts_with?,
+    ew: :string_ends_with?,
     gt: :greater_than,
     ge: :greater_than_or_equal,
     lt: :less_than,

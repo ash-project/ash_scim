@@ -32,9 +32,12 @@ defmodule AshScim.FilterTest do
       assert {:ok, %{email: %{is_nil: false}}} = Filter.parse(~S/userName pr/, User)
     end
 
-    test "rejects sw/ew until we add data-layer support" do
-      assert {:error, _} = Filter.parse(~S/userName sw "a"/, User)
-      assert {:error, _} = Filter.parse(~S/userName ew "z"/, User)
+    test "translates sw/ew to string_starts_with?/string_ends_with?" do
+      assert {:ok, %{email: %{string_starts_with?: "a"}}} =
+               Filter.parse(~S/userName sw "a"/, User)
+
+      assert {:ok, %{email: %{string_ends_with?: "z"}}} =
+               Filter.parse(~S/userName ew "z"/, User)
     end
 
     test "is case-insensitive on operators" do

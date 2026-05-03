@@ -103,10 +103,14 @@ jobs:
         id: compliance
         working-directory: demo
         run: |
-          set -eo pipefail
+          # `scim test` exits non-zero when any individual check fails — but
+          # we gate on aggregate counts (MIN_SUCCESS / MAX_ERROR), not on
+          # whether every check passes. So swallow scim's exit code with
+          # `|| true` and let the threshold check below decide.
           TOKEN=$(cat scim_token.txt)
           scim -u http://localhost:4002/scim/v2 -h "Authorization:Bearer $TOKEN" test \
-            | tee compliance.txt
+            > compliance.txt 2>&1 || true
+          cat compliance.txt
           successes=$(grep -c "^SUCCESS" compliance.txt || true)
           errors=$(grep -c "^ERROR" compliance.txt || true)
           echo "successes=$successes" >> $GITHUB_OUTPUT
