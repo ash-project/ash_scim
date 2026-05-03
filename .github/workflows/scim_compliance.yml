@@ -1,0 +1,142 @@
+# SPDX-FileCopyrightText: 2026 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
+name: SCIM Compliance
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  scim2-tester:
+    name: scim2-tester compliance suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ash_scim_demo_dev
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      MIX_ENV: dev
+      PORT: "4002"
+      # Lower the success/error thresholds in one place. See the README's
+      # "Multi-valued attributes" section for why a small number of errors
+      # is expected from the demo's User.email = identity model.
+      MIN_SUCCESS: "51"
+      MAX_ERROR: "3"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Erlang & Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          version-file: .tool-versions
+          version-type: strict
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install scim2-cli
+        run: pip install scim2-cli
+
+      - name: Cache demo deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            demo/deps
+            demo/_build
+          key: scim-demo-${{ runner.os }}-${{ hashFiles('demo/mix.lock', 'mix.exs') }}
+          restore-keys: |
+            scim-demo-${{ runner.os }}-
+
+      - name: Fetch demo deps
+        working-directory: demo
+        run: mix deps.get
+
+      - name: Set up demo database
+        working-directory: demo
+        run: mix ash.setup --quiet
+
+      - name: Seed service-account user and capture SCIM token
+        working-directory: demo
+        run: |
+          mix run priv/repo/seeds.exs > seed_output.txt
+          # The seed prints the JWT on the line right after "SCIM bearer token       :"
+          grep -A 1 "SCIM bearer token" seed_output.txt | tail -1 > scim_token.txt
+          test -s scim_token.txt
+
+      - name: Start Phoenix server
+        working-directory: demo
+        run: |
+          mix phx.server > server.log 2>&1 &
+          echo $! > server.pid
+          for i in {1..60}; do
+            if curl -sf http://localhost:4002/scim/v2/ServiceProviderConfig \
+                 -H "Authorization: Bearer $(cat scim_token.txt)" > /dev/null; then
+              echo "server up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "server failed to come up; tail of log:"
+          tail -50 server.log
+          exit 1
+
+      - name: Run scim2-tester compliance suite
+        id: compliance
+        working-directory: demo
+        run: |
+          set -eo pipefail
+          TOKEN=$(cat scim_token.txt)
+          scim -u http://localhost:4002/scim/v2 -h "Authorization:Bearer $TOKEN" test \
+            | tee compliance.txt
+          successes=$(grep -c "^SUCCESS" compliance.txt || true)
+          errors=$(grep -c "^ERROR" compliance.txt || true)
+          echo "successes=$successes" >> $GITHUB_OUTPUT
+          echo "errors=$errors" >> $GITHUB_OUTPUT
+          echo ""
+          echo "Successes: $successes (min $MIN_SUCCESS)"
+          echo "Errors:    $errors (max $MAX_ERROR)"
+          if [ "$successes" -lt "$MIN_SUCCESS" ]; then
+            echo "::error::Compliance regressed: $successes < $MIN_SUCCESS successes"
+            exit 1
+          fi
+          if [ "$errors" -gt "$MAX_ERROR" ]; then
+            echo "::error::Compliance regressed: $errors > $MAX_ERROR errors"
+            exit 1
+          fi
+
+      - name: Stop server
+        if: always()
+        working-directory: demo
+        run: |
+          if [ -f server.pid ]; then
+            kill "$(cat server.pid)" 2>/dev/null || true
+          fi
+
+      - name: Upload server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scim-compliance-logs
+          path: |
+            demo/server.log
+            demo/compliance.txt
+            demo/seed_output.txt

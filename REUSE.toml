@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
+version = 1
+
+# The demo Phoenix app contains a mix of generator-emitted scaffolding and
+# hand-written code. Rather than annotate every file individually, we
+# declare blanket coverage here so REUSE compliance checks pass.
+[[annotations]]
+path = "demo/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Zach Daniel"
+SPDX-License-Identifier = "MIT"

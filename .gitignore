@@ -1,3 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
 # The directory Mix will write compiled artifacts to.
 /_build/
 
@@ -10,8 +14,8 @@
 # Where third-party dependencies like ExDoc output generated docs.
 /doc/
 
-# Temporary files, for example, from tests.
-/tmp/
+# Ignore .fetch files in case you like to edit your project deps locally.
+/.fetch
 
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
@@ -21,4 +25,26 @@ erl_crash.dump
 
 # Ignore package tarball (built via "mix hex.build").
 ash_scim-*.tar
+
+# lsp
+.elixir_ls/
+
+# Temporary files, for example, from tests.
+/tmp/
+
+.env*
+
+priv/plts
+
+.claude
+
+# Demo app artifacts
+/demo/_build/
+/demo/deps/
+/demo/.elixir_ls/
+/demo/erl_crash.dump
+/demo/priv/static/assets/
+/demo/.lexical/
+/demo/scim_token.txt
+/demo/seed_output.txt
 

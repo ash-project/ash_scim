@@ -1,0 +1,18 @@
+# SPDX-FileCopyrightText: 2026 Zach Daniel
+#
+# SPDX-License-Identifier: MIT
+
+---
+updates:
+  - directory: /
+    groups:
+      dev-dependencies:
+        dependency-type: development
+      production-dependencies:
+        dependency-type: production
+    package-ecosystem: mix
+    schedule:
+      day: thursday
+      interval: monthly
+    versioning-strategy: lockfile-only
+version: 2
