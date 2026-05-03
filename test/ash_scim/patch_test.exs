@@ -187,12 +187,65 @@ defmodule AshScim.PatchTest do
   end
 
   describe "bare multivalued path on single-attribute multivalued" do
-    test "resolves to the multivalued's `:value`-mapped attribute" do
+    test "scalar value resolves to the multivalued's `:value`-mapped attribute" do
       assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
                Patch.to_params(
                  body([%{"op" => "replace", "path" => "emails", "value" => "new@example.com"}]),
                  User
                )
+    end
+
+    test "array-of-objects value extracts the underlying attribute via sub-maps" do
+      ops = [
+        %{
+          "op" => "replace",
+          "path" => "emails",
+          "value" => [
+            %{"value" => "new@example.com", "primary" => true, "type" => "work"}
+          ]
+        }
+      ]
+
+      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
+               Patch.to_params(body(ops), User)
+    end
+
+    test "array-of-objects with multiple entries picks the primary one" do
+      ops = [
+        %{
+          "op" => "replace",
+          "path" => "emails",
+          "value" => [
+            %{"value" => "alt@example.com", "primary" => false},
+            %{"value" => "primary@example.com", "primary" => true}
+          ]
+        }
+      ]
+
+      assert {:ok, %{attrs: %{email: "primary@example.com"}, relationships: []}} =
+               Patch.to_params(body(ops), User)
+    end
+
+    test "`add` with array-of-objects also extracts via sub-maps" do
+      ops = [
+        %{
+          "op" => "add",
+          "path" => "emails",
+          "value" => [%{"value" => "new@example.com", "primary" => true}]
+        }
+      ]
+
+      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
+               Patch.to_params(body(ops), User)
+    end
+
+    test "`remove` clears all sub-map-backed attributes" do
+      ops = [%{"op" => "remove", "path" => "emails"}]
+
+      # Only :email is attribute-backed in the example User's :emails
+      # multivalued; :primary and :type are static-value mappings.
+      assert {:ok, %{attrs: %{email: nil}, relationships: []}} =
+               Patch.to_params(body(ops), User)
     end
   end
 

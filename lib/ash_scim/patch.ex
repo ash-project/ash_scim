@@ -156,23 +156,97 @@ defmodule AshScim.Patch do
   # Bare path that resolves to a Complex — `add path: "name" value: {givenName: ...}`.
   defp apply_parsed_op(
          op,
-         %Path{attribute: attr_str, sub_attribute: nil} = _parsed,
+         %Path{attribute: attr_str, sub_attribute: nil, filter: nil} = parsed,
          value,
          resource,
          path
        ) do
-    case find_complex(attr_str, resource) do
-      %Complex{} = c ->
-        apply_complex_op(op, c, value)
+    cond do
+      complex = find_complex(attr_str, resource) ->
+        apply_complex_op(op, complex, value)
 
-      nil ->
-        apply_simple_op(op, %Path{attribute: attr_str, sub_attribute: nil}, value, resource, path)
+      multivalued = find_single_attr_multivalued(attr_str, resource) ->
+        apply_single_attr_multivalued_op(op, multivalued, value, resource, path, parsed)
+
+      true ->
+        apply_simple_op(op, parsed, value, resource, path)
     end
   end
 
   # Single-attribute multivalued or scalar attribute path.
   defp apply_parsed_op(op, parsed, value, resource, path) do
     apply_simple_op(op, parsed, value, resource, path)
+  end
+
+  # Bare-path single-attribute multivalued (no filter, no sub-attr).
+  # SCIM clients send `value: [{value: "x", primary: true, type: "..."}]`
+  # here. Walk the multivalued's sub-maps to extract the target Ash
+  # attribute(s) from the chosen array element (preferring the entry
+  # marked `primary: true`, falling back to the first).
+  defp apply_single_attr_multivalued_op(:remove, %Multivalued{maps: maps}, _value, _resource, _path, _parsed) do
+    attrs = clear_attrs_for(maps)
+    {:ok, %{attrs: attrs, relationships: []}}
+  end
+
+  defp apply_single_attr_multivalued_op(_op, %Multivalued{maps: maps}, value, _resource, _path, _parsed)
+       when is_list(value) do
+    case pick_primary_or_first(value) do
+      nil ->
+        # Empty array on add/replace — fall through to clear semantics.
+        {:ok, %{attrs: clear_attrs_for(maps), relationships: []}}
+
+      %{} = element ->
+        {:ok, %{attrs: decode_through_sub_maps(element, maps), relationships: []}}
+
+      _ ->
+        {:error, "expected an array of objects for multivalued attribute"}
+    end
+  end
+
+  # Some IdPs send a scalar instead of an array — e.g. `replace path: "emails"
+  # value: "alice@example.com"` to set the single underlying attribute. Treat
+  # that as a write to the default `:value`-mapped sub-attribute, same as the
+  # bracket-filter case `replace path: "emails[type eq \"work\"]" value: "x"`.
+  defp apply_single_attr_multivalued_op(op, _mv, value, resource, path, parsed)
+       when not is_list(value) do
+    apply_simple_op(op, parsed, value, resource, path)
+  end
+
+  defp clear_attrs_for(maps) do
+    maps
+    |> Enum.filter(&match?(%Map{attribute: a} when not is_nil(a), &1))
+    |> Enum.map(&{&1.attribute, nil})
+    |> Enum.into(%{})
+  end
+
+  defp pick_primary_or_first(list) do
+    case Enum.find(list, &(is_map(&1) and Elixir.Map.get(&1, "primary") == true)) do
+      nil -> Enum.find(list, &is_map/1)
+      element -> element
+    end
+  end
+
+  defp decode_through_sub_maps(element, maps) do
+    Enum.reduce(maps, %{}, fn
+      %Map{attribute: nil}, acc ->
+        acc
+
+      %Map{name: name, attribute: attr}, acc ->
+        case Elixir.Map.fetch(element, to_string(name)) do
+          {:ok, v} -> Elixir.Map.put(acc, attr, v)
+          :error -> acc
+        end
+
+      _, acc ->
+        acc
+    end)
+  end
+
+  defp find_single_attr_multivalued(attr_string, resource) do
+    Enum.find(AshScim.Info.scim_mappings(resource), fn
+      %Multivalued{name: name, relationship: nil} -> Atom.to_string(name) == attr_string
+      _ -> false
+    end)
   end
 
   defp apply_simple_op(op, parsed, value, resource, path) do
