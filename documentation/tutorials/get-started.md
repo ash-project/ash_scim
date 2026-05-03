@@ -27,7 +27,36 @@ By the end of this guide:
 - IdPs authenticate using bearer JWTs minted by AshAuthentication, stored
   in your existing token resource so they can be revoked at any time.
 
-## Add the dependency
+## Install with Igniter (recommended)
+
+```sh
+mix igniter.install ash_scim
+```
+
+This:
+
+- adds `:ash_scim` to your deps and `.formatter.exs`,
+- adds the `AshScim.User` extension to your user resource (default
+  `MyApp.Accounts.User` — pass `--user` to override),
+- adds the `:scim_external_id` and `:active` attributes if they're not
+  already present,
+- adds a default `scim do` block with sensible mappings,
+- adds the `AshScim.Checks.AshScimInteraction` policy bypass,
+- generates a `MyAppWeb.ScimRouter` module wired to your accounts domain.
+
+When AshAuthentication is also a dep of the project, the router defaults
+to `{AshScim.Auth.AshAuthenticationToken, otp_app: :my_app}`. Otherwise
+it defaults to `{AshScim.Auth.StaticBearer, tokens: {:env, "SCIM_BEARER_TOKEN"}}`.
+
+The installer is idempotent — re-running it on a partially-installed app
+picks up where it left off. The printed notices cover the two manual
+steps that remain: mounting the router in your endpoint, and minting a
+token.
+
+If you'd rather wire things by hand, the rest of this guide covers the
+equivalent manual setup.
+
+## Add the dependency (manual)
 
 ```elixir
 # mix.exs
