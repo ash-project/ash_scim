@@ -300,7 +300,7 @@ defmodule AshScim.Filter do
     end)
   end
 
-  defp lookup_attribute([outer, inner] = full, mappings) do
+  defp lookup_attribute([outer, _inner] = full, mappings) do
     Enum.find_value(mappings, {:error, {:unknown_attribute, full}}, fn
       %Complex{name: name, maps: sub_maps} ->
         if to_string(name) == outer, do: do_inner_lookup(sub_maps, full), else: nil

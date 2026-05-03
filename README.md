@@ -4,83 +4,86 @@ SPDX-FileCopyrightText: 2026 Zach Daniel
 SPDX-License-Identifier: MIT
 -->
 
-# AshScim
+![Logo](https://github.com/ash-project/ash/blob/main/logos/cropped-for-header-black-text.png?raw=true#gh-light-mode-only)
+![Logo](https://github.com/ash-project/ash/blob/main/logos/cropped-for-header-white-text.png?raw=true#gh-dark-mode-only)
 
-[![Hex.pm](https://img.shields.io/hexpm/v/ash_scim.svg)](https://hex.pm/packages/ash_scim)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Hex version badge](https://img.shields.io/hexpm/v/ash_scim.svg)](https://hex.pm/packages/ash_scim)
+[![Hexdocs badge](https://img.shields.io/badge/docs-hexdocs-purple)](https://hexdocs.pm/ash_scim)
 [![REUSE status](https://api.reuse.software/badge/github.com/ash-project/ash_scim)](https://api.reuse.software/info/github.com/ash-project/ash_scim)
 
-A [SCIM 2.0](https://datatracker.ietf.org/doc/html/rfc7644) server extension for
-the [Ash Framework](https://ash-hq.org).
+# AshScim
 
-`AshScim` lets identity providers (Okta, Azure AD, OneLogin, etc.) provision
-users and groups into your application by exposing standards-compliant SCIM
-endpoints over your existing Ash resources.
+Welcome! `AshScim` is a [SCIM 2.0](https://datatracker.ietf.org/doc/html/rfc7644)
+server extension for the [Ash Framework](https://hexdocs.pm/ash). It lets
+identity providers (Okta, Azure AD / Entra, OneLogin, JumpCloud, …) provision
+users and groups into your application by exposing standards-compliant
+SCIM endpoints over your existing Ash resources. This documentation is
+best viewed on [hexdocs](https://hexdocs.pm/ash_scim).
 
-It is intentionally orthogonal to authentication: SCIM only describes how user
-and group records are synchronized — login itself remains the responsibility of
-[`ash_authentication`](https://github.com/team-alembic/ash_authentication) (or
-any other strategy you choose).
+`AshScim` is intentionally orthogonal to authentication: SCIM only describes
+how user and group records are synchronized — login itself remains the
+responsibility of [`ash_authentication`](https://hexdocs.pm/ash_authentication)
+(or any other strategy you choose). The two integrate cleanly: AshScim
+can authenticate IdP requests using JWTs minted and stored by
+AshAuthentication.
 
 ## Status
 
-Early development — API is not yet stable.
+Early development — API is not yet stable. The library is end-to-end
+validated against the
+[`scim2-tester`](https://github.com/python-scim/scim2-tester) compliance
+suite in CI.
 
-## Installation
+## About the Documentation
 
-```elixir
-def deps do
-  [
-    {:ash_scim, "~> 0.1"}
-  ]
-end
-```
+[**Tutorials**](#tutorials) walk you through a series of steps to
+accomplish a goal. These are **learning-oriented**, and are a great
+place for beginners to start.
 
-## Multi-valued attributes
+---
 
-SCIM multi-valued attributes (`emails`, `phoneNumbers`, `members`, etc.)
-have two flavors in `AshScim`:
+[**Topics**](#topics) provide a high level overview of a specific
+concept or feature. These are **understanding-oriented**, and are
+perfect for discovering design patterns, features, and tools related to
+a given topic.
 
-**Single-attribute-backed** — the default. The multivalued maps to one Ash
-attribute on the resource and emits a one-element array. Ideal for "user
-has one email which is also their identity":
+---
 
-```elixir
-multivalued :emails do
-  map :value, attribute: :email
-  map :primary, value: true
-end
-```
+[**Reference**](#reference) documentation is produced automatically from
+our source code. It comes in the form of module documentation and DSL
+documentation. This documentation is **information-oriented**. Use the
+sidebar and the search bar to find relevant reference information.
 
-When decoding inbound payloads with multiple email entries, the entry
-marked `primary: true` is preferred; otherwise the first entry wins.
+## Tutorials
 
-**Relationship-backed** — for true many-rows-per-resource cases like group
-members. The multivalued points at a `has_many` relationship, and each
-array element corresponds to one related row:
+- [Get Started](documentation/tutorials/get-started.md)
 
-```elixir
-# in your Group resource
-scim do
-  map :displayName, attribute: :name
+---
 
-  multivalued :members do
-    relationship :memberships
-    map :value, attribute: :user_id
-  end
-end
+## Topics
 
-relationships do
-  has_many :memberships, MyApp.Accounts.Membership do
-    destination_attribute :group_id
-  end
-end
-```
+- [Multi-valued attributes](documentation/topics/multi-valued-attributes.md) —
+  single-attribute vs relationship-backed multivalueds.
+- [Filter syntax](documentation/topics/filters.md) — operators, dotted
+  paths, security guarantees.
+- [PATCH operations](documentation/topics/patch-operations.md) — what the
+  router does with each kind of `PatchOp`.
+- [Authentication](documentation/topics/authentication.md) — `StaticBearer`
+  and AshAuthentication-backed JWTs.
+- [Policies & the bypass check](documentation/topics/policies.md) — letting
+  the router run unimpeded by application policies.
+- [Multi-tenancy](documentation/topics/multitenancy.md) — attribute and
+  context strategies, per-tenant IdPs.
+- [Limitations](documentation/topics/limitations.md) — known gaps.
 
-`POST` / `PUT` bodies, `PATCH add path: members`, `PATCH replace path:
-members`, and `PATCH remove path: members[value eq "user-id"]` all map
-through to the relationship as you'd expect. A compile-time verifier
-checks that the relationship is declared, is a `has_many`, and that every
-sub-map's `:attribute` exists on the related resource.
+---
+
+## Reference
+
+- [AshScim.User DSL](documentation/dsls/DSL-AshScim.User.md)
+- [AshScim.Group DSL](documentation/dsls/DSL-AshScim.Group.md)
+- For other reference documentation, see the sidebar & search bar.
 
 ## Demo app & compliance testing
 
@@ -111,25 +114,14 @@ scim -u http://localhost:4002/scim/v2 -h "Authorization:Bearer $TOKEN" test
 CI runs this suite on every push and pull request — see
 `.github/workflows/scim_compliance.yml`. The current bar is **≥ 51
 successes / ≤ 3 errors**, the latter being known-acceptable artifacts of
-the demo's `User.email` being both required and unique (see Limitations).
+the demo's `User.email` being both required and unique (see
+[Limitations](documentation/topics/limitations.md)).
 
-## Limitations
+## Related packages
 
-- **`sw` / `ew` filter operators** (RFC 7644 §3.4.2.2). These appear almost
-  exclusively in admin search UIs, not in IdP-to-server provisioning, so
-  the practical impact is nil. Filters using them return
-  `400 invalidValue`.
-
-- **Per-element `replace` via bracket filter on relationship-backed
-  multivalueds.** `replace path: members[value eq "u1"].value` is not yet
-  wired up — most IdPs achieve the same effect with `remove` followed by
-  `add`, which both work.
-
-If your integration hits one of these corners, please open an issue with
-the IdP and the exact request — concrete examples make the right design
-fall out much faster than abstract spec compliance.
-
-## License
-
-`AshScim` is licensed under the MIT license. See `LICENSES/` for details. The
-project is [REUSE](https://reuse.software) compliant.
+- [Ash Framework](https://hexdocs.pm/ash)
+- [Ash Authentication](https://hexdocs.pm/ash_authentication) | Authenticate
+  users with password, OAuth, and more — pairs naturally with AshScim
+  for JWT-based bearer authentication of SCIM clients.
+- [Ash Postgres](https://hexdocs.pm/ash_postgres) | PostgreSQL data layer
+  — required if you want PATCH atomicity with row-level locking.

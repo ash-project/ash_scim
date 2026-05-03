@@ -69,12 +69,24 @@ defmodule AshScim.MixProject do
       extra_section: ["GUIDES"],
       extras: [
         {"README.md", name: "Home"},
-        "CHANGELOG.md"
+        "CHANGELOG.md",
+        "documentation/tutorials/get-started.md",
+        "documentation/topics/multi-valued-attributes.md",
+        "documentation/topics/filters.md",
+        "documentation/topics/patch-operations.md",
+        "documentation/topics/authentication.md",
+        "documentation/topics/policies.md",
+        "documentation/topics/multitenancy.md",
+        "documentation/topics/limitations.md",
+        {"documentation/dsls/DSL-AshScim.User.md",
+         search_data: Spark.Docs.search_data_for(AshScim.User)},
+        {"documentation/dsls/DSL-AshScim.Group.md",
+         search_data: Spark.Docs.search_data_for(AshScim.Group)}
       ],
       groups_for_extras: [
-        "Start Here": [
-          "README.md"
-        ]
+        Tutorials: ~r"documentation/tutorials",
+        Topics: ~r"documentation/topics",
+        Reference: ~r"documentation/dsls"
       ],
       skip_undefined_reference_warnings_on: [
         "CHANGELOG.md"
@@ -130,6 +142,7 @@ defmodule AshScim.MixProject do
       {:mimic, "~> 2.0", only: [:dev, :test]},
       {:mix_audit, "~> 2.1", only: [:dev, :test]},
       {:plug_cowboy, "~> 2.5", only: [:dev, :test]},
+      {:picosat_elixir, "~> 0.2", only: [:dev, :test]},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
       {:sobelow, "~> 0.12", only: [:dev, :test]},
       {:sourceror, "~> 1.8"},

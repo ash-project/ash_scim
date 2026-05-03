@@ -59,14 +59,50 @@ defmodule AshScim.Router do
   @scim_context %{private: %{ash_scim?: true}}
 
   # Tag every Ash query/changeset the router builds with a private context
-  # flag. `AshScim.Checks.AshScimInteraction` matches on this flag, so users
-  # can add `bypass AshScim.Checks.AshScimInteraction` to their resource
-  # policies to keep router-internal Ash calls from hitting user-facing
-  # authorisation.
-  defp scim_query(query), do: Ash.Query.set_context(query, @scim_context)
-  defp scim_changeset(cs), do: Ash.Changeset.set_context(cs, @scim_context)
+  # flag and the tenant carried by the conn. `AshScim.Checks.AshScimInteraction`
+  # matches on the context flag so users can add
+  # `bypass AshScim.Checks.AshScimInteraction` to their resource policies to
+  # keep router-internal Ash calls from hitting user-facing authorisation.
+  #
+  # Tenancy: AshScim itself is multitenancy-agnostic — it just threads
+  # whatever tenant your upstream pipeline placed on the conn (via
+  # `Ash.PlugHelpers.set_tenant/2`) into every Ash call. Ash's
+  # attribute-based and context-based multitenancy strategies both work as
+  # a result.
+  defp scim_query(query, tenant) do
+    query
+    |> Ash.Query.set_context(@scim_context)
+    |> maybe_set_query_tenant(tenant)
+  end
 
-  defp scim_opts(opts \\ []), do: Keyword.put(opts, :context, @scim_context)
+  defp scim_changeset(cs, tenant) do
+    cs
+    |> Ash.Changeset.set_context(@scim_context)
+    |> maybe_set_changeset_tenant(tenant)
+  end
+
+  # Build an options keyword list for `Ash.get/load/read/bulk_destroy/...`
+  # with the SCIM context, the actor, and the tenant. Caller passes both
+  # explicitly because some flows (notably the in-transaction PATCH path)
+  # don't have the conn in scope.
+  defp scim_opts(extra, actor, tenant) do
+    extra
+    |> Keyword.put(:context, @scim_context)
+    |> Keyword.put(:actor, actor)
+    |> maybe_put_tenant(tenant)
+  end
+
+  defp maybe_set_query_tenant(q, nil), do: q
+  defp maybe_set_query_tenant(q, tenant), do: Ash.Query.set_tenant(q, tenant)
+
+  defp maybe_set_changeset_tenant(cs, nil), do: cs
+  defp maybe_set_changeset_tenant(cs, tenant), do: Ash.Changeset.set_tenant(cs, tenant)
+
+  defp maybe_put_tenant(opts, nil), do: opts
+  defp maybe_put_tenant(opts, tenant), do: Keyword.put(opts, :tenant, tenant)
+
+  defp tenant(conn), do: Ash.PlugHelpers.get_tenant(conn)
+  defp actor(conn), do: conn.assigns[:ash_scim_actor]
 
   defmacro __using__(opts) do
     quote bind_quoted: [opts: opts] do
@@ -229,7 +265,12 @@ defmodule AshScim.Router do
   end
 
   defp search_resource(resource, filter_string, actor, conn, opts) do
-    base = resource |> Ash.Query.for_read(read_action(resource)) |> scim_query()
+    tenant = tenant(conn)
+
+    base =
+      resource
+      |> Ash.Query.for_read(read_action(resource))
+      |> scim_query(tenant)
 
     query =
       case filter_string do
@@ -251,7 +292,7 @@ defmodule AshScim.Router do
         []
 
       q ->
-        case Ash.read(q, actor: actor) do
+        case Ash.read(q, scim_opts([], actor, tenant)) do
           {:ok, records} -> Enum.map(records, &encode_and_project(conn, &1, opts))
           {:error, _} -> []
         end
@@ -292,18 +333,19 @@ defmodule AshScim.Router do
 
   defp index(conn, resource, opts) do
     conn = Plug.Conn.fetch_query_params(conn)
-    actor = conn.assigns[:ash_scim_actor]
+    actor = actor(conn)
+    tenant = tenant(conn)
 
-    with {:ok, query, page} <- build_index_query(conn, resource) do
+    with {:ok, query, page} <- build_index_query(conn, resource, tenant) do
       total =
-        case Ash.count(query, actor: actor) do
+        case Ash.count(query, scim_opts([], actor, tenant)) do
           {:ok, count} -> count
           {:error, _} -> nil
         end
 
       paged_query = query |> Ash.Query.offset(page.offset) |> Ash.Query.limit(page.limit)
 
-      case Ash.read(paged_query, actor: actor) do
+      case Ash.read(paged_query, scim_opts([], actor, tenant)) do
         {:ok, records} ->
           encoded = Enum.map(records, &encode_and_project(conn, &1, opts))
 
@@ -333,10 +375,11 @@ defmodule AshScim.Router do
   end
 
   defp show(conn, resource, id, opts) do
-    actor = conn.assigns[:ash_scim_actor]
+    actor = actor(conn)
+    tenant = tenant(conn)
     read_action = read_action(resource)
 
-    case Ash.get(resource, id, scim_opts(action: read_action, actor: actor)) do
+    case Ash.get(resource, id, scim_opts([action: read_action], actor, tenant)) do
       {:ok, record} ->
         send_json(conn, 200, encode_and_project(conn, record, opts))
 
@@ -350,16 +393,17 @@ defmodule AshScim.Router do
       {:ok, body, conn} ->
         decoded = Decoder.decode(resource, body)
         action = create_action(resource)
-        actor = conn.assigns[:ash_scim_actor]
+        actor = actor(conn)
+        tenant = tenant(conn)
 
         resource
         |> Ash.Changeset.for_create(action, decoded.attrs)
-        |> scim_changeset()
+        |> scim_changeset(tenant)
         |> apply_relationship_inputs(decoded.relationships)
-        |> Ash.create(actor: actor)
+        |> Ash.create(scim_opts([], actor, tenant))
         |> case do
           {:ok, record} ->
-            reloaded = reload_for_relationships(record, decoded.relationships, actor)
+            reloaded = reload_for_relationships(record, decoded.relationships, actor, tenant)
             send_json(conn, 201, encode_and_project(conn, reloaded, opts))
 
           {:error, error} ->
@@ -375,18 +419,20 @@ defmodule AshScim.Router do
     case read_json_body(conn) do
       {:ok, body, conn} ->
         decoded = Decoder.decode(resource, body)
-        actor = conn.assigns[:ash_scim_actor]
+        actor = actor(conn)
+        tenant = tenant(conn)
 
-        case Ash.get(resource, id, scim_opts(actor: actor)) do
+        case Ash.get(resource, id, scim_opts([], actor, tenant)) do
           {:ok, record} ->
             record
             |> Ash.Changeset.for_update(update_action(resource), decoded.attrs)
-            |> scim_changeset()
+            |> scim_changeset(tenant)
             |> apply_relationship_inputs(decoded.relationships)
-            |> Ash.update(actor: actor)
+            |> Ash.update(scim_opts([], actor, tenant))
             |> case do
               {:ok, updated} ->
-                reloaded = reload_for_relationships(updated, decoded.relationships, actor)
+                reloaded = reload_for_relationships(updated, decoded.relationships, actor, tenant)
+
                 send_json(conn, 200, encode_and_project(conn, reloaded, opts))
 
               {:error, error} ->
@@ -405,7 +451,8 @@ defmodule AshScim.Router do
   defp patch(conn, resource, id, opts) do
     case read_json_body(conn) do
       {:ok, body, conn} ->
-        actor = conn.assigns[:ash_scim_actor]
+        actor = actor(conn)
+        tenant = tenant(conn)
 
         case Patch.to_params(body, resource) do
           {:ok, %{attrs: attrs, relationships: rel_ops}} ->
@@ -417,7 +464,7 @@ defmodule AshScim.Router do
             result =
               [resource]
               |> Ash.transact(fn ->
-                apply_patch_in_transaction(resource, id, attrs, rel_ops, actor)
+                apply_patch_in_transaction(resource, id, attrs, rel_ops, actor, tenant)
               end)
               |> normalise_transact_result()
 
@@ -447,20 +494,20 @@ defmodule AshScim.Router do
   # Inner function runs inside `Ash.transact`; that wrapper already wraps the
   # return value in `{:ok, ...}` and rolls back on `{:error, _}`. So we
   # return the record directly on success, and `{:error, _}` to abort.
-  defp apply_patch_in_transaction(resource, id, attrs, rel_ops, actor) do
-    case fetch_for_patch(resource, id, actor) do
+  defp apply_patch_in_transaction(resource, id, attrs, rel_ops, actor, tenant) do
+    case fetch_for_patch(resource, id, actor, tenant) do
       {:ok, record} ->
         {manage_ops, post_update_ops} = split_relationship_ops(rel_ops)
 
         record
         |> Ash.Changeset.for_update(update_action(resource), attrs)
-        |> scim_changeset()
+        |> scim_changeset(tenant)
         |> apply_manage_ops(manage_ops)
-        |> Ash.update(actor: actor)
+        |> Ash.update(scim_opts([], actor, tenant))
         |> case do
           {:ok, updated} ->
-            case apply_post_update_ops(updated, post_update_ops, actor) do
-              :ok -> reload_for_response(updated, manage_ops ++ post_update_ops, actor)
+            case apply_post_update_ops(updated, post_update_ops, actor, tenant) do
+              :ok -> reload_for_response(updated, manage_ops ++ post_update_ops, actor, tenant)
               {:error, _} = err -> err
             end
 
@@ -476,7 +523,7 @@ defmodule AshScim.Router do
   # Fetch the parent record for PATCH application. Adds a `FOR UPDATE` row
   # lock when the data layer supports it so concurrent PATCHes serialize.
   # On data layers without lock support (e.g. ETS), this is a normal read.
-  defp fetch_for_patch(resource, id, actor) do
+  defp fetch_for_patch(resource, id, actor, tenant) do
     [pk | _] = Ash.Resource.Info.primary_key(resource)
 
     query =
@@ -484,9 +531,9 @@ defmodule AshScim.Router do
       |> Ash.Query.new()
       |> Ash.Query.filter_input(%{pk => %{eq: id}})
       |> maybe_lock_for_update(resource)
-      |> scim_query()
+      |> scim_query(tenant)
 
-    Ash.read_one(query, scim_opts(actor: actor, not_found_error?: true))
+    Ash.read_one(query, scim_opts([not_found_error?: true], actor, tenant))
   end
 
   defp maybe_lock_for_update(query, resource) do
@@ -542,12 +589,12 @@ defmodule AshScim.Router do
     end)
   end
 
-  defp apply_post_update_ops(_record, [], _actor), do: :ok
+  defp apply_post_update_ops(_record, [], _actor, _tenant), do: :ok
 
-  defp apply_post_update_ops(record, ops, actor) do
+  defp apply_post_update_ops(record, ops, actor, tenant) do
     Enum.reduce_while(ops, :ok, fn
       {:remove_where, rel, filter}, _acc ->
-        case do_remove_where(record, rel, filter, actor) do
+        case do_remove_where(record, rel, filter, actor, tenant) do
           :ok -> {:cont, :ok}
           {:error, _} = err -> {:halt, err}
         end
@@ -566,20 +613,20 @@ defmodule AshScim.Router do
   #    filter, many_to_many, etc.), fall back to loading through the
   #    relationship and destroying the loaded records, since that path
   #    correctly applies the relationship's own scoping rules.
-  defp do_remove_where(record, rel, filter, actor) do
+  defp do_remove_where(record, rel, filter, actor, tenant) do
     rel_def = Ash.Resource.Info.relationship(record.__struct__, rel)
 
     if simple_has_many?(rel_def) do
-      direct_remove_where(record, rel_def, filter, actor)
+      direct_remove_where(record, rel_def, filter, actor, tenant)
     else
-      load_then_remove(record, rel, filter, actor)
+      load_then_remove(record, rel, filter, actor, tenant)
     end
   end
 
   defp simple_has_many?(%{type: :has_many, filter: nil, through: nil}), do: true
   defp simple_has_many?(_), do: false
 
-  defp direct_remove_where(record, rel_def, user_filter, actor) do
+  defp direct_remove_where(record, rel_def, user_filter, actor, tenant) do
     parent_value = Elixir.Map.fetch!(record, rel_def.source_attribute)
 
     combined_filter = %{
@@ -592,25 +639,25 @@ defmodule AshScim.Router do
     query =
       rel_def.destination
       |> Ash.Query.filter_input(combined_filter)
-      |> scim_query()
+      |> scim_query(tenant)
 
-    bulk_destroy_query(query, actor)
+    bulk_destroy_query(query, actor, tenant)
   end
 
-  defp load_then_remove(record, rel, filter, actor) do
+  defp load_then_remove(record, rel, filter, actor, tenant) do
     related_resource = related_resource_for(record, rel)
 
     rel_query =
-      related_resource |> Ash.Query.filter_input(filter) |> scim_query()
+      related_resource |> Ash.Query.filter_input(filter) |> scim_query(tenant)
 
-    case Ash.load(record, [{rel, rel_query}], scim_opts(actor: actor)) do
+    case Ash.load(record, [{rel, rel_query}], scim_opts([], actor, tenant)) do
       {:ok, loaded} ->
         matches = Elixir.Map.get(loaded, rel) || []
 
         if matches == [] do
           :ok
         else
-          bulk_destroy_records(matches, actor)
+          bulk_destroy_records(matches, actor, tenant)
         end
 
       {:error, error} ->
@@ -618,31 +665,31 @@ defmodule AshScim.Router do
     end
   end
 
-  defp bulk_destroy_query(query, actor) do
+  defp bulk_destroy_query(query, actor, tenant) do
     handle_bulk_result(
       Ash.bulk_destroy(
         query,
         :destroy,
         %{},
         scim_opts(
-          return_errors?: true,
-          actor: actor,
-          strategy: :atomic_batches
+          [return_errors?: true, strategy: :atomic_batches],
+          actor,
+          tenant
         )
       )
     )
   end
 
-  defp bulk_destroy_records(records, actor) do
+  defp bulk_destroy_records(records, actor, tenant) do
     handle_bulk_result(
       Ash.bulk_destroy(
         records,
         :destroy,
         %{},
         scim_opts(
-          return_errors?: true,
-          actor: actor,
-          strategy: :atomic_batches
+          [return_errors?: true, strategy: :atomic_batches],
+          actor,
+          tenant
         )
       )
     )
@@ -657,25 +704,26 @@ defmodule AshScim.Router do
     Ash.Resource.Info.related(resource, [rel])
   end
 
-  defp reload_for_relationships(record, relationships, _actor) when relationships == %{},
-    do: record
+  defp reload_for_relationships(record, relationships, _actor, _tenant)
+       when relationships == %{},
+       do: record
 
-  defp reload_for_relationships(record, relationships, actor) do
+  defp reload_for_relationships(record, relationships, actor, tenant) do
     rels = Elixir.Map.keys(relationships)
 
-    case Ash.load(record, rels, scim_opts(actor: actor)) do
+    case Ash.load(record, rels, scim_opts([], actor, tenant)) do
       {:ok, reloaded} -> reloaded
       _ -> record
     end
   end
 
-  defp reload_for_response(record, ops, actor) do
+  defp reload_for_response(record, ops, actor, tenant) do
     rels = ops |> Enum.map(fn {_, rel, _} -> rel end) |> Enum.uniq()
 
     if rels == [] do
       record
     else
-      case Ash.load(record, rels, scim_opts(actor: actor)) do
+      case Ash.load(record, rels, scim_opts([], actor, tenant)) do
         {:ok, reloaded} -> reloaded
         _ -> record
       end
@@ -683,14 +731,15 @@ defmodule AshScim.Router do
   end
 
   defp destroy(conn, resource, id, _opts) do
-    actor = conn.assigns[:ash_scim_actor]
+    actor = actor(conn)
+    tenant = tenant(conn)
 
-    case Ash.get(resource, id, scim_opts(actor: actor)) do
+    case Ash.get(resource, id, scim_opts([], actor, tenant)) do
       {:ok, record} ->
         record
         |> Ash.Changeset.for_destroy(destroy_action(resource))
-        |> scim_changeset()
-        |> Ash.destroy(actor: actor)
+        |> scim_changeset(tenant)
+        |> Ash.destroy(scim_opts([], actor, tenant))
         |> normalise_destroy()
         |> case do
           :ok ->
@@ -725,8 +774,8 @@ defmodule AshScim.Router do
 
   # ───────────────────────────── query building ───────────────────────────── #
 
-  defp build_index_query(conn, resource) do
-    base = resource |> Ash.Query.for_read(read_action(resource)) |> scim_query()
+  defp build_index_query(conn, resource, tenant) do
+    base = resource |> Ash.Query.for_read(read_action(resource)) |> scim_query(tenant)
 
     with {:ok, filtered} <- apply_filter(base, conn, resource),
          {:ok, sorted} <- apply_sort(filtered, conn, resource),
