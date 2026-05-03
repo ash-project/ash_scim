@@ -29,12 +29,15 @@ defmodule AshScim.Patch do
       aren't well-defined).
     * `add` / `replace` / `remove` with a simple path (e.g. `active`,
       `name.givenName`) — maps to the corresponding Ash attribute.
-    * `add path: "members" value: [...]` — append-style relationship op.
-    * `replace path: "members" value: [...]` — full-replace relationship op.
-    * `remove path: "members[value eq \"x\"]"` — load-and-destroy op against
+    * `add path: "emails" value: [...]` — append-style relationship op.
+    * `replace path: "emails" value: [...]` — full-replace relationship op.
+    * `remove path: "emails[value eq \"x\"]"` — load-and-destroy op against
       the related resource matching the bracket filter.
-    * Bracket-filter paths on single-attribute multivalueds — filter is
-      informational, op applies to the underlying attribute.
+
+  When the multivalued declares `mirror_primary_to:`, the patch result also
+  carries a `:mirror_sync` post-op (or a synchronously-computed attr write
+  for replace) that keeps the parent's mirrored scalar in sync with the
+  primary entry's value.
   """
 
   alias AshScim.Decoder
@@ -48,6 +51,7 @@ defmodule AshScim.Patch do
           {:append, atom(), [%{atom() => term()}]}
           | {:replace_all, atom(), [%{atom() => term()}]}
           | {:remove_where, atom(), %{atom() => term()}}
+          | {:mirror_sync, atom(), atom(), atom()}
 
   @type result :: %{
           attrs: %{atom() => term()},
@@ -140,11 +144,17 @@ defmodule AshScim.Patch do
         relationship_inputs(value, multivalued, :replace_all, rel, path)
 
       {:remove, nil, nil} ->
-        # `remove path: "members"` with no filter clears the relationship.
-        {:ok, %{attrs: %{}, relationships: [{:replace_all, rel, []}]}}
+        # `remove path: "emails"` with no filter clears the relationship.
+        # If `mirror_primary_to:` is set, also nil the mirror attr unless
+        # it's `allow_nil?: false` — in that case we leave it alone but
+        # still report success, since SCIM doesn't model "this scalar is
+        # required because it's also the user's identity column".
+        attrs = mirror_clear_attrs(multivalued, resource)
+        {:ok, %{attrs: attrs, relationships: [{:replace_all, rel, []}]}}
 
       {:remove, %{} = filter, nil} ->
-        {:ok, %{attrs: %{}, relationships: [{:remove_where, rel, filter}]}}
+        ops = [{:remove_where, rel, filter} | mirror_sync_ops(multivalued)]
+        {:ok, %{attrs: %{}, relationships: ops}}
 
       _ ->
         {:error, {:invalid_path, path}}
@@ -163,110 +173,17 @@ defmodule AshScim.Patch do
       complex = find_complex(attr_str, resource) ->
         apply_complex_op(op, complex, value)
 
-      multivalued = find_single_attr_multivalued(attr_str, resource) ->
-        apply_single_attr_multivalued_op(op, multivalued, value, resource, path, parsed)
+      mv = find_mirror_only_multivalued(attr_str, resource) ->
+        apply_mirror_only_op(op, mv, value, resource)
 
       true ->
         apply_simple_op(op, parsed, value, resource, path)
     end
   end
 
-  # Single-attribute multivalued or scalar attribute path.
+  # Scalar attribute path.
   defp apply_parsed_op(op, parsed, value, resource, path) do
     apply_simple_op(op, parsed, value, resource, path)
-  end
-
-  # Bare-path single-attribute multivalued (no filter, no sub-attr).
-  # SCIM clients send `value: [{value: "x", primary: true, type: "..."}]`
-  # here. Walk the multivalued's sub-maps to extract the target Ash
-  # attribute(s) from the chosen array element (preferring the entry
-  # marked `primary: true`, falling back to the first).
-  #
-  # Remove handling is dispatched by the multivalued's `on_remove` option:
-  # `:set_nil` writes nil to each backing attribute, `:ignore` silently
-  # succeeds without touching the data, `:reject` returns a 400 mutability
-  # SCIM error.
-  defp apply_single_attr_multivalued_op(
-         :remove,
-         %Multivalued{} = mv,
-         _value,
-         _resource,
-         _path,
-         _parsed
-       ) do
-    case mv.on_remove do
-      :ignore -> {:ok, %{attrs: %{}, relationships: []}}
-      :reject -> {:error, {:mutability, mv.name}}
-      :set_nil -> {:ok, %{attrs: clear_attrs_for(mv.maps), relationships: []}}
-    end
-  end
-
-  defp apply_single_attr_multivalued_op(
-         _op,
-         %Multivalued{maps: maps},
-         value,
-         _resource,
-         _path,
-         _parsed
-       )
-       when is_list(value) do
-    case pick_primary_or_first(value) do
-      nil ->
-        # Empty array on add/replace — fall through to clear semantics.
-        {:ok, %{attrs: clear_attrs_for(maps), relationships: []}}
-
-      %{} = element ->
-        {:ok, %{attrs: decode_through_sub_maps(element, maps), relationships: []}}
-
-      _ ->
-        {:error, "expected an array of objects for multivalued attribute"}
-    end
-  end
-
-  # Some IdPs send a scalar instead of an array — e.g. `replace path: "emails"
-  # value: "alice@example.com"` to set the single underlying attribute. Treat
-  # that as a write to the default `:value`-mapped sub-attribute, same as the
-  # bracket-filter case `replace path: "emails[type eq \"work\"]" value: "x"`.
-  defp apply_single_attr_multivalued_op(op, _mv, value, resource, path, parsed)
-       when not is_list(value) do
-    apply_simple_op(op, parsed, value, resource, path)
-  end
-
-  defp clear_attrs_for(maps) do
-    maps
-    |> Enum.filter(&match?(%Map{attribute: a} when not is_nil(a), &1))
-    |> Enum.map(&{&1.attribute, nil})
-    |> Enum.into(%{})
-  end
-
-  defp pick_primary_or_first(list) do
-    case Enum.find(list, &(is_map(&1) and Elixir.Map.get(&1, "primary") == true)) do
-      nil -> Enum.find(list, &is_map/1)
-      element -> element
-    end
-  end
-
-  defp decode_through_sub_maps(element, maps) do
-    Enum.reduce(maps, %{}, fn
-      %Map{attribute: nil}, acc ->
-        acc
-
-      %Map{name: name, attribute: attr}, acc ->
-        case Elixir.Map.fetch(element, to_string(name)) do
-          {:ok, v} -> Elixir.Map.put(acc, attr, v)
-          :error -> acc
-        end
-
-      _, acc ->
-        acc
-    end)
-  end
-
-  defp find_single_attr_multivalued(attr_string, resource) do
-    Enum.find(AshScim.Info.scim_mappings(resource), fn
-      %Multivalued{name: name, relationship: nil} -> Atom.to_string(name) == attr_string
-      _ -> false
-    end)
   end
 
   defp apply_simple_op(op, parsed, value, resource, path) do
@@ -325,19 +242,141 @@ defmodule AshScim.Patch do
     end)
   end
 
-  defp relationship_inputs(value, %Multivalued{maps: maps}, op_kind, rel, path)
+  defp find_mirror_only_multivalued(attr_string, resource) do
+    Enum.find(AshScim.Info.scim_mappings(resource), fn
+      %Multivalued{name: name, relationship: nil, mirror_primary_to: m}
+      when not is_nil(m) ->
+        Atom.to_string(name) == attr_string
+
+      _ ->
+        false
+    end)
+  end
+
+  # Mode B (no relationship, mirror_primary_to only): writes funnel through
+  # the parent's mirror attribute. Picks primary from the value list, sets
+  # `attrs[mirror_primary_to] = primary.value`.
+  defp apply_mirror_only_op(:remove, %Multivalued{} = mv, _value, resource) do
+    {:ok, %{attrs: mirror_clear_attrs(mv, resource), relationships: []}}
+  end
+
+  defp apply_mirror_only_op(_op, %Multivalued{mirror_primary_to: mirror_attr}, value, _resource)
+       when is_list(value) do
+    objects = Enum.filter(value, &is_map/1)
+
+    case Decoder.pick_primary(objects) do
+      nil ->
+        {:ok, %{attrs: %{}, relationships: []}}
+
+      chosen ->
+        case Elixir.Map.fetch(chosen, "value") do
+          {:ok, v} -> {:ok, %{attrs: %{mirror_attr => v}, relationships: []}}
+          :error -> {:ok, %{attrs: %{}, relationships: []}}
+        end
+    end
+  end
+
+  # Some IdPs send a scalar instead of an array — `replace path: "emails"
+  # value: "alice@example.com"`. Treat that as a direct write to the
+  # mirror attr.
+  defp apply_mirror_only_op(_op, %Multivalued{mirror_primary_to: mirror_attr}, value, _resource)
+       when not is_list(value) do
+    {:ok, %{attrs: %{mirror_attr => value}, relationships: []}}
+  end
+
+  defp relationship_inputs(value, %Multivalued{maps: maps} = mv, op_kind, rel, path)
        when is_list(value) do
     inputs = Enum.map(value, &decode_relationship_element(&1, maps))
 
     if Enum.any?(inputs, &(&1 == :error)) do
       {:error, {:invalid_path, path}}
     else
-      {:ok, %{attrs: %{}, relationships: [{op_kind, rel, inputs}]}}
+      {:ok, build_relationship_result(mv, op_kind, rel, inputs, value)}
     end
   end
 
   defp relationship_inputs(_value, _mv, _op_kind, _rel, path),
     do: {:error, {:invalid_path, path}}
+
+  # `replace_all` with a non-empty list: we know the new primary
+  # synchronously, so write the mirror attr inline. Empty replace clears
+  # the relationship; mirror is left alone (parent's identity column can't
+  # be nilled).
+  defp build_relationship_result(
+         %Multivalued{mirror_primary_to: mirror_attr, maps: maps},
+         :replace_all,
+         rel,
+         inputs,
+         raw
+       )
+       when not is_nil(mirror_attr) and inputs != [] do
+    case mirror_attr_for(mirror_attr, maps, raw) do
+      {:ok, attr_map} ->
+        %{attrs: attr_map, relationships: [{:replace_all, rel, inputs}]}
+
+      :none ->
+        %{attrs: %{}, relationships: [{:replace_all, rel, inputs}]}
+    end
+  end
+
+  defp build_relationship_result(
+         %Multivalued{mirror_primary_to: mirror_attr} = mv,
+         op_kind,
+         rel,
+         inputs,
+         _raw
+       )
+       when not is_nil(mirror_attr) and op_kind == :append do
+    %{attrs: %{}, relationships: [{op_kind, rel, inputs} | mirror_sync_ops(mv)]}
+  end
+
+  defp build_relationship_result(_mv, op_kind, rel, inputs, _raw) do
+    %{attrs: %{}, relationships: [{op_kind, rel, inputs}]}
+  end
+
+  # Pick primary from raw SCIM input list, then map its `value` SCIM
+  # sub-attribute to the parent's mirror attribute.
+  defp mirror_attr_for(mirror_attr, maps, raw_list) do
+    objects = Enum.filter(raw_list, &is_map/1)
+
+    case Decoder.pick_primary(objects) do
+      nil ->
+        :none
+
+      chosen ->
+        case Elixir.Map.fetch(chosen, "value") do
+          {:ok, value} ->
+            _ = maps
+            {:ok, %{mirror_attr => value}}
+
+          :error ->
+            :none
+        end
+    end
+  end
+
+  defp mirror_sync_ops(%Multivalued{mirror_primary_to: nil}), do: []
+
+  defp mirror_sync_ops(%Multivalued{
+         relationship: rel,
+         mirror_primary_to: mirror_attr,
+         maps: maps
+       }) do
+    case Enum.find(maps, &match?(%Map{name: :value, attribute: a} when not is_nil(a), &1)) do
+      %Map{attribute: value_attr} -> [{:mirror_sync, rel, mirror_attr, value_attr}]
+      _ -> []
+    end
+  end
+
+  defp mirror_clear_attrs(nil, _resource), do: %{}
+  defp mirror_clear_attrs(%Multivalued{mirror_primary_to: nil}, _resource), do: %{}
+
+  defp mirror_clear_attrs(%Multivalued{mirror_primary_to: attr}, resource) do
+    case Ash.Resource.Info.attribute(resource, attr) do
+      %{allow_nil?: true} -> %{attr => nil}
+      _ -> %{}
+    end
+  end
 
   defp decode_relationship_element(element, maps) when is_map(element) do
     Enum.reduce(maps, %{}, fn
@@ -386,9 +425,6 @@ defmodule AshScim.Patch do
       %Map{name: name, attribute: attr} when not is_nil(attr) ->
         if to_string(name) == single, do: {:ok, attr}, else: nil
 
-      %Multivalued{name: name, maps: sub_maps} ->
-        if to_string(name) == single, do: lookup_default_sub(sub_maps), else: nil
-
       _ ->
         nil
     end)
@@ -417,22 +453,5 @@ defmodule AshScim.Patch do
       _ ->
         nil
     end)
-  end
-
-  defp lookup_default_sub(sub_maps) do
-    Enum.find_value(sub_maps, :error, fn
-      %Map{name: :value, attribute: attr} when not is_nil(attr) -> {:ok, attr}
-      _ -> nil
-    end)
-    |> case do
-      :error ->
-        Enum.find_value(sub_maps, :error, fn
-          %Map{attribute: attr} when not is_nil(attr) -> {:ok, attr}
-          _ -> nil
-        end)
-
-      ok ->
-        ok
-    end
   end
 end

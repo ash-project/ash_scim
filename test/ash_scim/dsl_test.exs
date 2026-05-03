@@ -28,7 +28,12 @@ defmodule AshScim.DslTest do
                %Map{name: :active, attribute: :active},
                %Map{name: :externalId, attribute: :scim_external_id},
                %Complex{name: :name, maps: name_maps},
-               %Multivalued{name: :emails, maps: emails_maps}
+               %Multivalued{
+                 name: :emails,
+                 relationship: :emails,
+                 mirror_primary_to: :email,
+                 maps: emails_maps
+               }
              ] = mappings
 
       assert [
@@ -37,9 +42,9 @@ defmodule AshScim.DslTest do
              ] = name_maps
 
       assert [
-               %Map{name: :value, attribute: :email},
-               %Map{name: :primary, value: true},
-               %Map{name: :type, value: "work"}
+               %Map{name: :value, attribute: :value},
+               %Map{name: :primary, attribute: :primary},
+               %Map{name: :type, attribute: :type}
              ] = emails_maps
     end
   end

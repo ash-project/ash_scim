@@ -21,9 +21,11 @@ defmodule AshScim.Test.Example.User do
     end
 
     multivalued :emails do
-      map :value, attribute: :email
-      map :primary, value: true
-      map :type, value: "work"
+      relationship :emails
+      mirror_primary_to :email
+      map :value, attribute: :value
+      map :primary, attribute: :primary
+      map :type, attribute: :type
     end
   end
 
@@ -38,5 +40,12 @@ defmodule AshScim.Test.Example.User do
     attribute :first_name, :string, public?: true
     attribute :last_name, :string, public?: true
     attribute :scim_external_id, :string, public?: true
+  end
+
+  relationships do
+    has_many :emails, AshScim.Test.Example.Email do
+      destination_attribute :user_id
+      public? true
+    end
   end
 end

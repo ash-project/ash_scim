@@ -48,7 +48,10 @@ defmodule AshScim.FilterTest do
       assert {:ok, %{first_name: %{eq: "Alice"}}} =
                Filter.parse(~S/name.givenName eq "Alice"/, User)
 
-      assert {:ok, %{email: %{eq: "alice@example.com"}}} =
+      # Relationship-backed multivalueds resolve to a nested map rooted at
+      # the relationship name, with the SCIM sub-attribute mapped to the
+      # related resource's attribute.
+      assert {:ok, %{emails: %{value: %{eq: "alice@example.com"}}}} =
                Filter.parse(~S/emails.value eq "alice@example.com"/, User)
     end
 
@@ -117,8 +120,8 @@ defmodule AshScim.FilterTest do
                Filter.parse(~S/a.b.c eq "x"/, User)
     end
 
-    test "rejects emit-only static-value mappings (no backing attribute)" do
-      assert {:error, {:unknown_attribute, ["emails", "primary"]}} =
+    test "resolves boolean sub-attributes on relationship-backed multivalueds" do
+      assert {:ok, %{emails: %{primary: %{eq: true}}}} =
                Filter.parse(~S/emails.primary eq true/, User)
     end
   end

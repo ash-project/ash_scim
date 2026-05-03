@@ -22,20 +22,27 @@ defmodule AshScim.Patch.PathTest do
 
   describe "bracket-filter paths" do
     test "extracts the filter and leaves no sub-attribute" do
-      # `type` is currently a static-value mapping on `:emails`, so the filter
-      # resolver drops it (no backing Ash attribute to filter against). We
-      # still get a clean parse with `filter: nil` and the rest intact.
-      assert {:ok, %Path{attribute: "emails", sub_attribute: nil, filter: nil}} =
-               Path.parse(~S(emails[type eq "work"]), User)
+      assert {:ok,
+              %Path{
+                attribute: "emails",
+                sub_attribute: nil,
+                filter: %{type: %{eq: "work"}},
+                relationship: :emails
+              }} = Path.parse(~S(emails[type eq "work"]), User)
     end
 
     test "extracts the filter and the sub-attribute" do
-      assert {:ok, %Path{attribute: "emails", sub_attribute: "value", filter: nil}} =
-               Path.parse(~S(emails[type eq "work"].value), User)
+      assert {:ok,
+              %Path{
+                attribute: "emails",
+                sub_attribute: "value",
+                filter: %{type: %{eq: "work"}},
+                relationship: :emails
+              }} = Path.parse(~S(emails[type eq "work"].value), User)
     end
 
-    test "tolerates unknown attribute names inside the filter" do
-      assert {:ok, %Path{filter: nil}} =
+    test "rejects unknown attribute names inside the filter" do
+      assert {:error, {:unknown_attribute, ["emails", "notARealField"]}} =
                Path.parse(~S(emails[notARealField eq "work"].value), User)
     end
   end

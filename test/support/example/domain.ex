@@ -9,6 +9,7 @@ defmodule AshScim.Test.Example.Domain do
 
   resources do
     resource AshScim.Test.Example.User
+    resource AshScim.Test.Example.Email
     resource AshScim.Test.Example.Group
     resource AshScim.Test.Example.Membership
   end

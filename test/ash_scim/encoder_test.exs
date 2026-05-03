@@ -6,7 +6,7 @@ defmodule AshScim.EncoderTest do
   use ExUnit.Case, async: true
 
   alias AshScim.Encoder
-  alias AshScim.Test.Example.User
+  alias AshScim.Test.Example.{Email, User}
 
   defp build_user(overrides \\ []) do
     attrs =
@@ -52,11 +52,34 @@ defmodule AshScim.EncoderTest do
                Encoder.encode(user)
     end
 
-    test "encodes multivalued attributes as a single-element array" do
+    test "encodes a relationship-backed multivalued by loading the related rows" do
       user = build_user()
 
-      assert %{"emails" => [%{"value" => "alice@example.com", "primary" => true}]} =
-               Encoder.encode(user)
+      Email
+      |> Ash.Changeset.for_create(:create, %{
+        value: "alice@example.com",
+        primary: true,
+        type: "work",
+        user_id: user.id
+      })
+      |> Ash.create!()
+
+      Email
+      |> Ash.Changeset.for_create(:create, %{
+        value: "alice+alt@example.com",
+        primary: false,
+        type: "home",
+        user_id: user.id
+      })
+      |> Ash.create!()
+
+      encoded = Encoder.encode(user)
+
+      assert is_list(encoded["emails"])
+      assert length(encoded["emails"]) == 2
+      values = Enum.map(encoded["emails"], & &1["value"])
+      assert "alice@example.com" in values
+      assert "alice+alt@example.com" in values
     end
 
     test "omits keys whose backing attribute is nil" do

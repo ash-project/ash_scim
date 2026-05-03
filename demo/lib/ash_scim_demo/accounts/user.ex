@@ -33,13 +33,15 @@ defmodule AshScimDemo.Accounts.User do
     end
 
     multivalued :emails do
-      # `:email` is the user's identity (required + unique). PATCH `remove
-      # path: "emails"` is honoured as a no-op since dropping the email
-      # would invalidate the user record.
-      on_remove :ignore
-      map :value, attribute: :email
-      map :primary, value: true
-      map :type, value: "work"
+      # Each email entry is a separate row in `user_emails` so SCIM can
+      # round-trip arbitrary `value`/`primary`/`type` combinations. The
+      # parent's `:email` column stays in sync with the primary entry's
+      # `value` for use as the login identity.
+      relationship :emails
+      mirror_primary_to :email
+      map :value, attribute: :value
+      map :primary, attribute: :primary
+      map :type, attribute: :type
     end
   end
 
@@ -89,6 +91,13 @@ defmodule AshScimDemo.Accounts.User do
     attribute :first_name, :string, public?: true
     attribute :last_name, :string, public?: true
     attribute :scim_external_id, :string, public?: true
+  end
+
+  relationships do
+    has_many :emails, AshScimDemo.Accounts.Email do
+      destination_attribute :user_id
+      public? true
+    end
   end
 
   identities do

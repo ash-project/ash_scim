@@ -106,7 +106,7 @@ defmodule AshScim.Encoder do
   end
 
   defp encode_mapping(%Multivalued{relationship: rel, name: name, maps: maps}, record)
-       when is_atom(rel) and not is_nil(rel) do
+       when not is_nil(rel) do
     case load_relationship(record, rel) do
       {:ok, related_records} ->
         items =
@@ -125,20 +125,37 @@ defmodule AshScim.Encoder do
     end
   end
 
-  defp encode_mapping(%Multivalued{name: name, maps: maps}, record) do
-    item =
-      maps
-      |> Enum.reduce(%{}, fn map, acc ->
-        case encode_mapping(map, record) do
-          :skip -> acc
-          {k, v} -> Elixir.Map.put(acc, k, v)
-        end
-      end)
+  # Mode B: no relationship, only `mirror_primary_to:`. Emit a single-
+  # element array using the parent's mirror attribute as `value` and any
+  # static `value:`-decorator sub-maps as the rest. Skip entirely if the
+  # mirror attr is nil/empty so we don't emit `emails: [{value: nil}]`.
+  defp encode_mapping(
+         %Multivalued{
+           relationship: nil,
+           mirror_primary_to: mirror_attr,
+           name: name,
+           maps: maps
+         },
+         record
+       )
+       when not is_nil(mirror_attr) do
+    case Elixir.Map.get(record, mirror_attr) do
+      nil ->
+        :skip
 
-    if item == %{} do
-      :skip
-    else
-      {to_string(name), [item]}
+      "" ->
+        :skip
+
+      value ->
+        decorators =
+          maps
+          |> Enum.filter(&match?(%Map{value: v} when not is_nil(v), &1))
+          |> Enum.reduce(%{}, fn %Map{name: sub_name, value: v}, acc ->
+            Elixir.Map.put(acc, to_string(sub_name), v)
+          end)
+
+        item = Elixir.Map.put(decorators, "value", scalarize(value))
+        {to_string(name), [item]}
     end
   end
 

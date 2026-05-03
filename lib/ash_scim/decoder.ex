@@ -17,12 +17,9 @@ defmodule AshScim.Decoder do
   Per RFC 7644 §3.1, unknown attributes are silently dropped. Emit-only
   static-value mappings are skipped on the way in.
 
-  When a multivalued attribute is *not* relationship-backed, the decoder
-  collapses the array to a single element by picking the entry marked
-  `primary: true` if one exists, falling back to the first entry otherwise.
+  Multivalueds with `mirror_primary_to:` set additionally write the primary
+  entry's `value` to the named scalar attribute on the parent.
   """
-
-  require Logger
 
   alias AshScim.Dsl.{Complex, Map, Multivalued}
 
@@ -65,44 +62,19 @@ defmodule AshScim.Decoder do
     end
   end
 
-  defp apply_mapping(%Multivalued{relationship: rel, maps: maps} = mv, body, acc)
-       when is_atom(rel) and not is_nil(rel) do
+  defp apply_mapping(%Multivalued{relationship: rel, maps: maps} = mv, body, acc) do
     case Elixir.Map.fetch(body, to_string(mv.name)) do
       {:ok, list} when is_list(list) ->
+        objects = Enum.filter(list, &is_map/1)
+
         rel_inputs =
-          list
-          |> Enum.filter(&is_map/1)
+          objects
           |> Enum.map(&decode_relationship_element(&1, maps))
           |> Enum.reject(&(&1 == %{}))
 
-        if rel_inputs == [] do
-          acc
-        else
-          %{acc | relationships: Elixir.Map.put(acc.relationships, rel, rel_inputs)}
-        end
-
-      _ ->
         acc
-    end
-  end
-
-  defp apply_mapping(%Multivalued{name: name, maps: maps}, body, acc) do
-    case Elixir.Map.fetch(body, to_string(name)) do
-      {:ok, list} when is_list(list) ->
-        case pick_primary_element(list) do
-          %{} = chosen ->
-            warn_if_lossy(name, list, chosen)
-
-            addition =
-              Enum.reduce(maps, %{}, fn sub_map, sub_acc ->
-                sub_map |> decode_simple_map(chosen) |> merge_attrs(sub_acc)
-              end)
-
-            %{acc | attrs: Elixir.Map.merge(acc.attrs, addition)}
-
-          _ ->
-            acc
-        end
+        |> maybe_put_relationships(rel, rel_inputs)
+        |> maybe_mirror_primary(mv, objects)
 
       _ ->
         acc
@@ -127,31 +99,46 @@ defmodule AshScim.Decoder do
   defp merge_attrs(addition, acc) when addition == %{}, do: acc
   defp merge_attrs(addition, acc), do: Elixir.Map.merge(acc, addition)
 
-  defp warn_if_lossy(name, list, chosen) do
-    objects = Enum.filter(list, &is_map/1)
+  # Pick the primary entry deterministically: an explicit `primary: true`
+  # wins; otherwise sort by SCIM `value` (lexicographically) and take the
+  # first. Sorting ensures the choice doesn't drift if entries are
+  # re-ordered by the IdP between requests.
+  @doc false
+  @spec pick_primary([%{String.t() => term()}]) :: %{String.t() => term()} | nil
+  def pick_primary([]), do: nil
 
-    if length(objects) > 1 do
-      dropped = Enum.reject(objects, &(&1 == chosen))
-
-      Logger.warning(fn ->
-        "[AshScim.Decoder] single-attribute multivalued :#{name} received " <>
-          "#{length(objects)} entries; kept #{inspect(chosen)} and dropped " <>
-          "#{inspect(dropped)}. To preserve all entries, declare the multivalued " <>
-          "with `relationship:` so each entry maps to a separate row."
-      end)
+  def pick_primary(objects) do
+    case Enum.find(objects, &(Elixir.Map.get(&1, "primary") == true)) do
+      nil -> objects |> Enum.sort_by(&sort_key/1) |> List.first()
+      element -> element
     end
   end
 
-  defp pick_primary_element(list) do
-    case Enum.find(list, &(is_map(&1) and Elixir.Map.get(&1, "primary") == true)) do
-      nil ->
-        case Enum.find(list, &is_map/1) do
-          nil -> nil
-          element -> element
-        end
+  defp sort_key(map) do
+    case Elixir.Map.get(map, "value") do
+      v when is_binary(v) -> v
+      v -> inspect(v)
+    end
+  end
 
-      element ->
-        element
+  defp maybe_put_relationships(acc, nil, _rel_inputs), do: acc
+  defp maybe_put_relationships(acc, _rel, []), do: acc
+
+  defp maybe_put_relationships(acc, rel, rel_inputs),
+    do: %{acc | relationships: Elixir.Map.put(acc.relationships, rel, rel_inputs)}
+
+  defp maybe_mirror_primary(acc, %Multivalued{mirror_primary_to: nil}, _objects), do: acc
+
+  defp maybe_mirror_primary(acc, %Multivalued{mirror_primary_to: mirror_attr}, objects) do
+    case pick_primary(objects) do
+      nil ->
+        acc
+
+      chosen ->
+        case Elixir.Map.fetch(chosen, "value") do
+          {:ok, value} -> %{acc | attrs: Elixir.Map.put(acc.attrs, mirror_attr, value)}
+          :error -> acc
+        end
     end
   end
 end

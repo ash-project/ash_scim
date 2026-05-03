@@ -9,31 +9,55 @@ defmodule AshScim.Dsl.Multivalued do
 
   A `multivalued` attribute emits an array of complex objects under a single
   SCIM key, e.g. SCIM's `emails` array where each element has `value`,
-  `primary`, and `type` sub-attributes.
+  `primary`, and `type` sub-attributes. There are two modes:
 
-  In the simple/initial form a multivalued attribute backed by a single Ash
-  attribute is emitted as a one-element array. Future iterations may support
-  has_many-style mappings.
+  ### Mode A — relationship-backed
+
+  Each entry is a row in a `has_many` relationship. SCIM round-trips
+  arbitrary `value`/`primary`/`type` per entry. Sub-`map`s reference
+  attributes on the *related* resource.
+
+      multivalued :emails do
+        relationship :emails
+        mirror_primary_to :email   # optional — also sync to parent column
+        map :value,   attribute: :value
+        map :primary, attribute: :primary
+        map :type,    attribute: :type
+      end
+
+  ### Mode B — mirror-only (no relationship)
+
+  The parent has a single scalar (e.g. `:email`) and the SCIM `emails`
+  array is collapsed: writes pick the primary entry's `value` into the
+  scalar; reads emit one element with `value:` from the scalar plus any
+  static decorators. Simpler to set up; doesn't preserve `primary`/`type`
+  per entry.
+
+      multivalued :emails do
+        mirror_primary_to :email
+        map :primary, value: true
+        map :type,    value: "work"
+      end
+
+  At least one of `relationship:` or `mirror_primary_to:` must be set.
   """
 
   defstruct [
     :name,
     :relationship,
+    :mirror_primary_to,
     :returned,
     :mutability,
-    on_remove: :set_nil,
     maps: [],
     __spark_metadata__: nil
   ]
 
-  @type on_remove :: :set_nil | :ignore | :reject
-
   @type t :: %__MODULE__{
           name: atom(),
           relationship: atom() | nil,
+          mirror_primary_to: atom() | nil,
           returned: :always | :never | :default | :request | nil,
           mutability: :read_only | :read_write | :immutable | :write_only | nil,
-          on_remove: on_remove(),
           maps: [AshScim.Dsl.Map.t()]
         }
 
@@ -46,15 +70,35 @@ defmodule AshScim.Dsl.Multivalued do
     relationship: [
       type: :atom,
       doc: """
-      Optional. The name of a `has_many` relationship on this resource that
-      backs this multivalued attribute. When present, encoding loads the
-      relationship and emits one array element per related record; PATCH
-      operations on this attribute manipulate the related rows directly.
-      Sub-`map` declarations reference attributes on the *related* resource
-      rather than on this one.
+      The name of a `has_many` relationship on this resource that backs
+      this multivalued attribute. When set, encoding loads the relationship
+      and emits one array element per related record; PATCH operations on
+      this attribute manipulate the related rows directly. Sub-`map`
+      declarations reference attributes on the *related* resource.
 
-      Leave unset to use the simple model where the multivalued is backed
-      by attributes on this resource (one-element array semantics).
+      Either `relationship:` or `mirror_primary_to:` must be set.
+      """
+    ],
+    mirror_primary_to: [
+      type: :atom,
+      doc: """
+      Names a scalar attribute on *this* resource that mirrors the SCIM
+      `value` of the multivalued's *primary* entry.
+
+      With `relationship:` also set, the relationship is the source of
+      truth for SCIM output and `mirror_primary_to:` keeps the parent
+      scalar in sync (e.g. for use as a login identity).
+
+      Without `relationship:`, the parent scalar **is** the source of
+      truth: SCIM `emails` is collapsed to one element on read, and writes
+      pick the primary entry's value into the scalar. The other
+      sub-attributes (`primary`, `type`) can be filled in via static
+      `value:` decorators on sub-`map`s.
+
+      The primary entry is picked as: the entry with `primary: true` if
+      one exists; otherwise the lexicographically first entry by `value`.
+
+      Either `relationship:` or `mirror_primary_to:` must be set.
       """
     ],
     returned: [
@@ -64,26 +108,6 @@ defmodule AshScim.Dsl.Multivalued do
     mutability: [
       type: {:in, [:read_only, :read_write, :immutable, :write_only]},
       doc: "RFC 7643 `mutability`. Defaults to `:read_write`."
-    ],
-    on_remove: [
-      type: {:in, [:set_nil, :ignore, :reject]},
-      default: :set_nil,
-      doc: """
-      How to handle PATCH `remove` on this multivalued (only meaningful for
-      single-attribute-backed multivalueds; relationship-backed always
-      destroys the related rows).
-
-        * `:set_nil` (default) — set the underlying Ash attribute(s) to
-          `nil`. Fails with `400 invalidValue` if the attribute is
-          `allow_nil?: false`.
-        * `:ignore` — silently succeed without touching the data. Useful
-          for required identity fields (e.g. `email`) where the IdP's
-          remove semantics don't fit your model but you don't want to
-          surface the conflict to the IdP.
-        * `:reject` — return a `400 mutability` SCIM error explicitly.
-          Tells the IdP "this attribute can't be removed" without the
-          ambiguity of `invalidValue`.
-      """
     ]
   ]
 

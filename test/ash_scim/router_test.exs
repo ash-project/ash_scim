@@ -357,26 +357,6 @@ defmodule AshScim.RouterTest do
       assert body(conn)["scimType"] == "invalidPath"
     end
 
-    test "accepts filter-bracket paths (filter is informational for single-attr multivalued)" do
-      user = create_user!()
-
-      body =
-        Jason.encode!(%{
-          "Operations" => [
-            %{
-              "op" => "replace",
-              "path" => ~S(emails[type eq "work"].value),
-              "value" => "new@example.com"
-            }
-          ]
-        })
-
-      conn = request("PATCH", "/Users/#{user.id}", body)
-
-      assert conn.status == 200
-      assert body(conn)["userName"] == "new@example.com"
-    end
-
     test "returns 404 for a nonexistent user" do
       body =
         Jason.encode!(%{

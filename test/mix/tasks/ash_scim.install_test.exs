@@ -14,6 +14,10 @@ defmodule Mix.Tasks.AshScim.InstallTest do
     |> Igniter.Project.Deps.add_dep({:picosat_elixir, ">= 0.0.0"})
     |> Igniter.Project.Deps.add_dep({:ash_authentication, ">= 0.0.0"})
     |> Igniter.compose_task("ash_authentication.install", ["--yes"])
+    # Add the password strategy so the user resource gets an `:email`
+    # attribute — that's what triggers the installer's `multivalued :emails`
+    # default.
+    |> Igniter.compose_task("ash_authentication.add_strategy", ["password", "--yes"])
     |> Igniter.Project.Formatter.remove_imported_dep(:ash_authentication)
     |> Igniter.Project.Formatter.remove_formatter_plugin(Spark.Formatter)
     |> apply_igniter!()

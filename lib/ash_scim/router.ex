@@ -495,9 +495,6 @@ defmodule AshScim.Router do
           {:error, {:invalid_path, path}} ->
             send_error(conn, 400, "invalid PATCH path: `#{path}`", :invalidPath)
 
-          {:error, {:mutability, name}} ->
-            send_error(conn, 400, "attribute `#{name}` cannot be removed", :mutability)
-
           {:error, reason} when is_binary(reason) ->
             send_error(conn, 400, reason, :invalidSyntax)
 
@@ -534,8 +531,8 @@ defmodule AshScim.Router do
            |> Ash.Changeset.for_update(update_action(resource), attrs, scim_changeset_opts(env))
            |> apply_manage_ops(manage_ops)
            |> Ash.update(scim_opts([], env)),
-         :ok <- apply_post_update_ops(updated, post_update_ops, env) do
-      reload_for_response(updated, manage_ops ++ post_update_ops, env)
+         {:ok, post_processed} <- apply_post_update_ops(updated, post_update_ops, env) do
+      reload_for_response(post_processed, manage_ops ++ post_update_ops, env)
     end
   end
 
@@ -589,7 +586,7 @@ defmodule AshScim.Router do
   # Relationship ops fall into two buckets: those that can be expressed via
   # Ash.Changeset.manage_relationship (append, replace_all) and run inside
   # the same update transaction; and those that need a separate
-  # load+bulk_destroy step after the main update (remove_where).
+  # load+bulk_destroy step after the main update (remove_where, mirror_sync).
   defp split_relationship_ops(rel_ops) do
     Enum.split_with(rel_ops, fn
       {:append, _, _} -> true
@@ -608,17 +605,97 @@ defmodule AshScim.Router do
     end)
   end
 
-  defp apply_post_update_ops(_record, [], _env), do: :ok
+  defp apply_post_update_ops(record, [], _env), do: {:ok, record}
 
   defp apply_post_update_ops(record, ops, env) do
-    Enum.reduce_while(ops, :ok, fn
-      {:remove_where, rel, filter}, _acc ->
-        case do_remove_where(record, rel, filter, env) do
-          :ok -> {:cont, :ok}
-          {:error, _} = err -> {:halt, err}
-        end
+    Enum.reduce_while(ops, {:ok, record}, fn op, {:ok, current} ->
+      case run_post_update_op(op, current, env) do
+        {:ok, updated} -> {:cont, {:ok, updated}}
+        {:error, _} = err -> {:halt, err}
+      end
     end)
   end
+
+  defp run_post_update_op({:remove_where, rel, filter}, record, env) do
+    case do_remove_where(record, rel, filter, env) do
+      :ok -> {:ok, record}
+      {:error, _} = err -> err
+    end
+  end
+
+  # Re-derive the parent's mirror attribute from the current relationship
+  # rows after a destructive op (append/remove_where) on a multivalued with
+  # `mirror_primary_to:` set. Picks primary by the same rule as
+  # `Decoder.pick_primary/1`: explicit `primary: true`, else lex-sorted by
+  # `value`. If no rows remain, nil the mirror attr if it's nullable;
+  # otherwise leave it alone (required identity columns can't be nilled,
+  # and SCIM doesn't model that constraint).
+  defp run_post_update_op({:mirror_sync, rel, mirror_attr, value_attr}, record, env) do
+    resource = record.__struct__
+
+    case Ash.load(record, [rel], scim_opts([], env)) do
+      {:ok, loaded} ->
+        rows = Elixir.Map.get(loaded, rel) || []
+        new_value = mirror_value_from_rows(rows, value_attr)
+
+        case mirror_update_attrs(resource, mirror_attr, new_value) do
+          :skip -> {:ok, loaded}
+          {:update, attrs} -> do_mirror_update(loaded, resource, attrs, env)
+        end
+
+      {:error, _} = err ->
+        err
+    end
+  end
+
+  defp mirror_value_from_rows([], _value_attr), do: :empty
+
+  defp mirror_value_from_rows(rows, value_attr) do
+    case pick_primary_row(rows, value_attr) do
+      nil -> :empty
+      row -> {:value, Elixir.Map.fetch!(row, value_attr)}
+    end
+  end
+
+  defp mirror_update_attrs(resource, mirror_attr, :empty) do
+    case Ash.Resource.Info.attribute(resource, mirror_attr) do
+      %{allow_nil?: true} -> {:update, %{mirror_attr => nil}}
+      _ -> :skip
+    end
+  end
+
+  defp mirror_update_attrs(_resource, mirror_attr, {:value, v}) do
+    {:update, %{mirror_attr => v}}
+  end
+
+  defp do_mirror_update(record, resource, attrs, env) do
+    record
+    |> Ash.Changeset.for_update(update_action(resource), attrs, scim_changeset_opts(env))
+    |> Ash.update(scim_opts([], env))
+  end
+
+  defp pick_primary_row([], _value_attr), do: nil
+
+  defp pick_primary_row(rows, value_attr) do
+    primary_field = primary_field_for(rows)
+
+    case primary_field && Enum.find(rows, &(Elixir.Map.get(&1, primary_field) == true)) do
+      nil ->
+        rows |> Enum.sort_by(&Elixir.Map.fetch!(&1, value_attr)) |> List.first()
+
+      row ->
+        row
+    end
+  end
+
+  # The related resource's `primary` field could be named anything. Probe
+  # the first row's keys for a `:primary` boolean. If the multivalued
+  # doesn't model `primary`, fall through to lex-sort.
+  defp primary_field_for([row | _]) when is_struct(row) do
+    if Elixir.Map.has_key?(row, :primary), do: :primary, else: nil
+  end
+
+  defp primary_field_for(_), do: nil
 
   # Two strategies for `:remove_where`:
   #
@@ -729,7 +806,7 @@ defmodule AshScim.Router do
   end
 
   defp reload_for_response(record, ops, env) do
-    rels = ops |> Enum.map(fn {_, rel, _} -> rel end) |> Enum.uniq()
+    rels = ops |> Enum.map(&op_relationship/1) |> Enum.uniq()
 
     if rels == [] do
       record
@@ -740,6 +817,11 @@ defmodule AshScim.Router do
       end
     end
   end
+
+  defp op_relationship({:append, rel, _}), do: rel
+  defp op_relationship({:replace_all, rel, _}), do: rel
+  defp op_relationship({:remove_where, rel, _}), do: rel
+  defp op_relationship({:mirror_sync, rel, _, _}), do: rel
 
   defp destroy(conn, resource, id, _opts) do
     env = scim_env(conn)

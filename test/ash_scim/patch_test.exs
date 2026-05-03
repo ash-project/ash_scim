@@ -102,20 +102,6 @@ defmodule AshScim.PatchTest do
                )
     end
 
-    test "tolerates unknown attribute names *inside* a bracket filter on single-attr multivalued" do
-      assert {:ok, %{attrs: %{email: "x"}, relationships: []}} =
-               Patch.to_params(
-                 body([
-                   %{
-                     "op" => "replace",
-                     "path" => ~S(emails[notARealField eq "work"].value),
-                     "value" => "x"
-                   }
-                 ]),
-                 User
-               )
-    end
-
     test "rejects unknown ops" do
       assert {:error, _} =
                Patch.to_params(
@@ -129,123 +115,83 @@ defmodule AshScim.PatchTest do
     end
   end
 
-  describe "bracket-filter paths on single-attribute multivalued" do
-    test "`attr[filter]` resolves to the multivalued's default value attribute" do
-      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
-               Patch.to_params(
-                 body([
-                   %{
-                     "op" => "replace",
-                     "path" => ~S(emails[type eq "work"]),
-                     "value" => "new@example.com"
-                   }
-                 ]),
-                 User
-               )
-    end
-
-    test "`attr[filter].sub` resolves to the named sub-attribute" do
-      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
-               Patch.to_params(
-                 body([
-                   %{
-                     "op" => "replace",
-                     "path" => ~S(emails[type eq "work"].value),
-                     "value" => "new@example.com"
-                   }
-                 ]),
-                 User
-               )
-    end
-
-    test "remove with a bracket path nils the underlying attribute" do
-      assert {:ok, %{attrs: %{email: nil}, relationships: []}} =
-               Patch.to_params(
-                 body([
-                   %{
-                     "op" => "remove",
-                     "path" => ~S(emails[type eq "work"].value)
-                   }
-                 ]),
-                 User
-               )
-    end
-
-    test "syntactically invalid bracket filters fail with :invalid_path" do
-      assert {:error, {:invalid_path, _}} =
-               Patch.to_params(
-                 body([
-                   %{
-                     "op" => "replace",
-                     "path" => ~S(emails[not a filter].value),
-                     "value" => "x"
-                   }
-                 ]),
-                 User
-               )
-    end
-  end
-
-  describe "bare multivalued path on single-attribute multivalued" do
-    test "scalar value resolves to the multivalued's `:value`-mapped attribute" do
-      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
-               Patch.to_params(
-                 body([%{"op" => "replace", "path" => "emails", "value" => "new@example.com"}]),
-                 User
-               )
-    end
-
-    test "array-of-objects value extracts the underlying attribute via sub-maps" do
+  describe "relationship-backed multivalued with mirror_primary_to (User.emails)" do
+    test "replace path: \"emails\" value: [...] emits :replace_all and mirrors primary's value" do
       ops = [
         %{
           "op" => "replace",
           "path" => "emails",
           "value" => [
-            %{"value" => "new@example.com", "primary" => true, "type" => "work"}
+            %{"value" => "alt@example.com", "primary" => false, "type" => "home"},
+            %{"value" => "primary@example.com", "primary" => true, "type" => "work"}
           ]
         }
       ]
 
-      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
-               Patch.to_params(body(ops), User)
+      assert {:ok,
+              %{
+                attrs: %{email: "primary@example.com"},
+                relationships: [{:replace_all, :emails, inputs}]
+              }} = Patch.to_params(body(ops), User)
+
+      assert length(inputs) == 2
     end
 
-    test "array-of-objects with multiple entries picks the primary one" do
+    test "replace with no explicit primary mirrors the lex-sorted-first entry" do
       ops = [
         %{
           "op" => "replace",
           "path" => "emails",
           "value" => [
-            %{"value" => "alt@example.com", "primary" => false},
-            %{"value" => "primary@example.com", "primary" => true}
+            %{"value" => "zach@example.com"},
+            %{"value" => "alice@example.com"}
           ]
         }
       ]
 
-      assert {:ok, %{attrs: %{email: "primary@example.com"}, relationships: []}} =
-               Patch.to_params(body(ops), User)
+      assert {:ok, %{attrs: %{email: "alice@example.com"}}} = Patch.to_params(body(ops), User)
     end
 
-    test "`add` with array-of-objects also extracts via sub-maps" do
+    test "add path: \"emails\" emits :append plus a :mirror_sync post-op" do
       ops = [
         %{
           "op" => "add",
           "path" => "emails",
-          "value" => [%{"value" => "new@example.com", "primary" => true}]
+          "value" => [%{"value" => "new@example.com", "primary" => true, "type" => "work"}]
         }
       ]
 
-      assert {:ok, %{attrs: %{email: "new@example.com"}, relationships: []}} =
+      assert {:ok,
+              %{
+                attrs: %{},
+                relationships: [
+                  {:append, :emails, _},
+                  {:mirror_sync, :emails, :email, :value}
+                ]
+              }} = Patch.to_params(body(ops), User)
+    end
+
+    test "remove path: \"emails\" leaves the mirror untouched when allow_nil?: false" do
+      ops = [%{"op" => "remove", "path" => "emails"}]
+
+      # User.email is allow_nil?: false (it's the identity column), so
+      # `remove path: emails` clears the relationship rows but leaves the
+      # parent's email attribute alone — and still reports success.
+      assert {:ok, %{attrs: %{}, relationships: [{:replace_all, :emails, []}]}} =
                Patch.to_params(body(ops), User)
     end
 
-    test "`remove` clears all sub-map-backed attributes" do
-      ops = [%{"op" => "remove", "path" => "emails"}]
+    test "remove path: \"emails[filter]\" emits :remove_where plus :mirror_sync" do
+      ops = [%{"op" => "remove", "path" => ~S(emails[value eq "alt@example.com"])}]
 
-      # Only :email is attribute-backed in the example User's :emails
-      # multivalued; :primary and :type are static-value mappings.
-      assert {:ok, %{attrs: %{email: nil}, relationships: []}} =
-               Patch.to_params(body(ops), User)
+      assert {:ok,
+              %{
+                attrs: %{},
+                relationships: [
+                  {:remove_where, :emails, _filter},
+                  {:mirror_sync, :emails, :email, :value}
+                ]
+              }} = Patch.to_params(body(ops), User)
     end
   end
 

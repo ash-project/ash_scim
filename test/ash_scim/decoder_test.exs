@@ -5,8 +5,6 @@
 defmodule AshScim.DecoderTest do
   use ExUnit.Case, async: true
 
-  import ExUnit.CaptureLog
-
   alias AshScim.Decoder
   alias AshScim.Test.Example.User
 
@@ -59,8 +57,25 @@ defmodule AshScim.DecoderTest do
     end
   end
 
-  describe "decode/2 — single-attribute multivalued (no relationship)" do
-    test "picks the primary element when one is marked" do
+  describe "decode/2 — relationship-backed multivalued with mirror_primary_to" do
+    test "decodes each entry into a relationship input row" do
+      decoded =
+        Decoder.decode(User, %{
+          "emails" => [
+            %{"value" => "alice@example.com", "primary" => true, "type" => "work"},
+            %{"value" => "alice+alt@example.com", "primary" => false, "type" => "home"}
+          ]
+        })
+
+      assert decoded.relationships == %{
+               emails: [
+                 %{value: "alice@example.com", primary: true, type: "work"},
+                 %{value: "alice+alt@example.com", primary: false, type: "home"}
+               ]
+             }
+    end
+
+    test "mirrors the explicit primary entry's value to the parent attr" do
       decoded =
         Decoder.decode(User, %{
           "emails" => [
@@ -72,47 +87,22 @@ defmodule AshScim.DecoderTest do
       assert decoded.attrs == %{email: "alice@example.com"}
     end
 
-    test "falls back to the first element when none is marked primary" do
+    test "with no explicit primary, mirrors the lex-sorted first entry's value" do
       decoded =
         Decoder.decode(User, %{
           "emails" => [
-            %{"value" => "alice@example.com"},
-            %{"value" => "alice+alt@example.com"}
+            %{"value" => "zach@example.com"},
+            %{"value" => "alice@example.com"}
           ]
         })
 
       assert decoded.attrs == %{email: "alice@example.com"}
     end
 
-    test "skips emit-only static-value sub-mappings on the way in" do
+    test "skips mirror when no entry has a value sub-attribute" do
       decoded = Decoder.decode(User, %{"emails" => [%{"primary" => false}]})
 
       assert decoded.attrs == %{}
-    end
-
-    test "warns when multiple entries are collapsed into a single attribute" do
-      log =
-        capture_log(fn ->
-          Decoder.decode(User, %{
-            "emails" => [
-              %{"value" => "alice@example.com", "primary" => true},
-              %{"value" => "alice+alt@example.com", "primary" => false}
-            ]
-          })
-        end)
-
-      assert log =~ "single-attribute multivalued :emails received 2 entries"
-      assert log =~ "alice+alt@example.com"
-      assert log =~ "relationship:"
-    end
-
-    test "does not warn for a single-entry array" do
-      log =
-        capture_log(fn ->
-          Decoder.decode(User, %{"emails" => [%{"value" => "alice@example.com"}]})
-        end)
-
-      refute log =~ "single-attribute multivalued"
     end
   end
 end

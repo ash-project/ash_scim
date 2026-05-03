@@ -74,13 +74,16 @@ if Code.ensure_loaded?(Igniter) do
       router_module = options[:router]
       otp_app = Igniter.Project.Application.app_name(igniter)
 
+      {igniter, has_email?} =
+        Ash.Resource.Igniter.defines_attribute(igniter, user_resource, :email)
+
       igniter
       |> Igniter.Project.Formatter.import_dep(:ash_scim)
       |> Spark.Igniter.prepend_to_section_order(:"Ash.Resource", [:scim])
       |> ensure_user_exists(user_resource)
       |> extend_user_with_ash_scim(user_resource)
       |> add_default_attributes(user_resource)
-      |> add_scim_block(user_resource)
+      |> add_scim_block(user_resource, has_email?)
       |> ensure_bypass_policy(user_resource)
       |> generate_scim_router(router_module, accounts_domain, otp_app)
       |> Ash.Igniter.codegen("add_scim_to_user_resource")
@@ -169,18 +172,44 @@ if Code.ensure_loaded?(Igniter) do
       """)
     end
 
-    defp add_scim_block(igniter, user_resource) do
-      AshScim.Igniter.add_scim_section(igniter, user_resource, """
+    defp add_scim_block(igniter, user_resource, has_email?) do
+      mappings = """
       map :userName,   attribute: :email
       map :active,     attribute: :active
       map :externalId, attribute: :scim_external_id
+      """
 
-      multivalued :emails do
-        map :value,   attribute: :email
-        map :primary, value: true
-        map :type,    value: "work"
-      end
-      """)
+      mappings =
+        if has_email? do
+          mappings <>
+            """
+
+            # `mirror_primary_to:` collapses SCIM's multi-entry `emails`
+            # array onto the parent's `:email` scalar — simple, but only
+            # the primary entry's value round-trips. To preserve arbitrary
+            # `primary`/`type` per entry, replace this block with a
+            # relationship-backed multivalued: define an `Email` resource
+            # that `belongs_to :user`, add `has_many :emails` here, and
+            # use:
+            #
+            #     multivalued :emails do
+            #       relationship :emails
+            #       mirror_primary_to :email
+            #       map :value,   attribute: :value
+            #       map :primary, attribute: :primary
+            #       map :type,    attribute: :type
+            #     end
+            multivalued :emails do
+              mirror_primary_to :email
+              map :primary, value: true
+              map :type,    value: "work"
+            end
+            """
+        else
+          mappings
+        end
+
+      AshScim.Igniter.add_scim_section(igniter, user_resource, mappings)
     end
 
     defp ensure_bypass_policy(igniter, user_resource) do

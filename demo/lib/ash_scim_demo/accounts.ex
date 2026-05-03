@@ -5,6 +5,7 @@ defmodule AshScimDemo.Accounts do
   resources do
     resource AshScimDemo.Accounts.Token
     resource AshScimDemo.Accounts.User
+    resource AshScimDemo.Accounts.Email
     resource AshScimDemo.Accounts.Group
     resource AshScimDemo.Accounts.Membership
   end
