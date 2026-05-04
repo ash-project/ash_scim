@@ -28,13 +28,6 @@ responsibility of [`ash_authentication`](https://hexdocs.pm/ash_authentication)
 can authenticate IdP requests using JWTs minted and stored by
 AshAuthentication.
 
-## Status
-
-Early development — API is not yet stable. The library is end-to-end
-validated against the
-[`scim2-tester`](https://github.com/python-scim/scim2-tester) compliance
-suite in CI.
-
 ## About the Documentation
 
 [**Tutorials**](#tutorials) walk you through a series of steps to
@@ -112,10 +105,7 @@ scim -u http://localhost:4002/scim/v2 -h "Authorization:Bearer $TOKEN" test
 ```
 
 CI runs this suite on every push and pull request — see
-`.github/workflows/scim_compliance.yml`. The current bar is **≥ 51
-successes / ≤ 3 errors**, the latter being known-acceptable artifacts of
-the demo's `User.email` being both required and unique (see
-[Limitations](documentation/topics/limitations.md)).
+`.github/workflows/scim_compliance.yml`. The job fails on any `ERROR` line.
 
 ## Related packages
 
