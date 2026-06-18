@@ -41,7 +41,7 @@ defmodule AshScim.Patch do
   """
 
   alias AshScim.Decoder
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
   alias AshScim.Patch.Path
 
   @schema "urn:ietf:params:scim:api:messages:2.0:PatchOp"
@@ -130,6 +130,12 @@ defmodule AshScim.Patch do
   end
 
   defp do_op(_, _, _, _), do: {:error, "path must be a string"}
+
+  # Extension-scoped paths (e.g. `urn:…:enterprise:2.0:User:manager.value`).
+  defp apply_parsed_op(op, %Path{extension: urn} = parsed, value, resource, path)
+       when is_binary(urn) do
+    apply_extension_op(op, find_extension(urn, resource), parsed, value, path)
+  end
 
   # Relationship-backed multivalued ops.
   defp apply_parsed_op(op, %Path{relationship: rel} = parsed, value, resource, path)
@@ -233,6 +239,57 @@ defmodule AshScim.Patch do
       %Complex{name: name} -> Atom.to_string(name) == attr_string
       _ -> false
     end)
+  end
+
+  defp find_extension(urn, resource) do
+    Enum.find(AshScim.Info.scim_mappings(resource), fn
+      %Extension{urn: u} -> u == urn
+      _ -> false
+    end)
+  end
+
+  defp apply_extension_op(_op, nil, _parsed, _value, path), do: {:error, {:invalid_path, path}}
+
+  # `<urn>:manager` — the attribute is a complex within the extension.
+  defp apply_extension_op(
+         op,
+         %Extension{} = ext,
+         %Path{attribute: attr, sub_attribute: nil},
+         value,
+         path
+       ) do
+    map =
+      Enum.find(ext.maps, fn m ->
+        match?(%Map{attribute: a} when not is_nil(a), m) and Atom.to_string(m.name) == attr
+      end)
+
+    cond do
+      complex = Enum.find(ext.complexes, &(Atom.to_string(&1.name) == attr)) ->
+        apply_complex_op(op, complex, value)
+
+      map ->
+        {:ok, %{attrs: %{map.attribute => value_for(op, value)}, relationships: []}}
+
+      true ->
+        {:error, {:invalid_path, path}}
+    end
+  end
+
+  # `<urn>:manager.value` — a sub-attribute of a complex within the extension.
+  defp apply_extension_op(
+         op,
+         %Extension{} = ext,
+         %Path{attribute: attr, sub_attribute: sub},
+         value,
+         path
+       ) do
+    with %Complex{maps: maps} <- Enum.find(ext.complexes, &(Atom.to_string(&1.name) == attr)),
+         %Map{attribute: attribute} when not is_nil(attribute) <-
+           Enum.find(maps, &(Atom.to_string(&1.name) == sub)) do
+      {:ok, %{attrs: %{attribute => value_for(op, value)}, relationships: []}}
+    else
+      _ -> {:error, {:invalid_path, path}}
+    end
   end
 
   defp find_multivalued(attr_string, resource) do

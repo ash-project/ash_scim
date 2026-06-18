@@ -21,7 +21,7 @@ defmodule AshScim.Decoder do
   entry's `value` to the named scalar attribute on the parent.
   """
 
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
 
   @type decoded :: %{
           attrs: %{atom() => term()},
@@ -44,6 +44,17 @@ defmodule AshScim.Decoder do
     case decode_simple_map(m, body) do
       addition when addition == %{} -> acc
       addition -> %{acc | attrs: Elixir.Map.merge(acc.attrs, addition)}
+    end
+  end
+
+  defp apply_mapping(%Extension{urn: urn} = ext, body, acc) do
+    case Elixir.Map.fetch(body, urn) do
+      {:ok, %{} = inner} ->
+        (ext.maps ++ ext.complexes ++ ext.multivalueds)
+        |> Enum.reduce(acc, fn mapping, acc -> apply_mapping(mapping, inner, acc) end)
+
+      _ ->
+        acc
     end
   end
 

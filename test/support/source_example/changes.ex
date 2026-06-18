@@ -35,7 +35,6 @@ defmodule AshScim.Test.SourceExample.ScopeBySource do
   """
 
   use Ash.Resource.Preparation
-  require Ash.Query
 
   @impl true
   def prepare(query, _opts, _context) do

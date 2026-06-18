@@ -25,13 +25,14 @@ defmodule AshScim.Patch.Path do
   the bracket filter are validated against the resource's mappings.
   """
 
-  defstruct [:attribute, :sub_attribute, :filter, :relationship]
+  defstruct [:attribute, :sub_attribute, :filter, :relationship, :extension]
 
   @type t :: %__MODULE__{
           attribute: String.t(),
           sub_attribute: String.t() | nil,
           filter: %{} | nil,
-          relationship: atom() | nil
+          relationship: atom() | nil,
+          extension: String.t() | nil
         }
 
   @doc """
@@ -41,8 +42,12 @@ defmodule AshScim.Patch.Path do
   """
   @spec parse(String.t(), module()) :: {:ok, t()} | {:error, term()}
   def parse(path, resource) when is_binary(path) and is_atom(resource) do
-    with {:ok, attr, filter_string, sub} <- do_split(path) do
-      relationship = relationship_backing(attr, resource)
+    {extension, rest} = split_extension(path, resource)
+
+    with {:ok, attr, filter_string, sub} <- do_split(rest) do
+      # Relationship-backed multivalueds only resolve at the resource root, not
+      # inside an extension object.
+      relationship = if is_nil(extension), do: relationship_backing(attr, resource)
 
       case maybe_parse_filter(filter_string, resource, attr, relationship) do
         {:ok, filter} ->
@@ -51,13 +56,25 @@ defmodule AshScim.Patch.Path do
              attribute: attr,
              sub_attribute: sub,
              filter: filter,
-             relationship: relationship
+             relationship: relationship,
+             extension: extension
            }}
 
         {:error, _} = err ->
           err
       end
     end
+  end
+
+  # A path may be prefixed with a schema-extension URN followed by `:`
+  # (RFC 7644 §3.5.2), e.g. `urn:…:enterprise:2.0:User:manager.value`. Strip a
+  # declared extension URN if present, returning `{urn, remainder}`.
+  defp split_extension(path, resource) do
+    AshScim.Info.scim_extension_urns(resource)
+    |> Enum.find_value({nil, path}, fn urn ->
+      prefix = urn <> ":"
+      if String.starts_with?(path, prefix), do: {urn, String.replace_prefix(path, prefix, "")}
+    end)
   end
 
   # Returns the Ash relationship atom backing this multivalued, or nil for

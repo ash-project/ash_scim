@@ -674,8 +674,6 @@ defmodule AshScim.Router do
     |> Ash.update(scim_opts([], env))
   end
 
-  defp pick_primary_row([], _value_attr), do: nil
-
   defp pick_primary_row(rows, value_attr) do
     primary_field = primary_field_for(rows)
 

@@ -12,7 +12,7 @@ defmodule AshScim.Encoder do
   only with single-resource encoding.
   """
 
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
 
   @list_response_schema "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 
@@ -26,7 +26,7 @@ defmodule AshScim.Encoder do
     * `:base_url` — used to build `meta.location`. If omitted, `meta.location`
       is not emitted.
   """
-  @spec encode(Ash.Resource.record(), opts()) :: %{String.t() => term()}
+  @spec encode(Ash.Resource.Record.t(), opts()) :: %{String.t() => term()}
   def encode(record, opts \\ []) when is_struct(record) do
     resource = record.__struct__
 
@@ -46,6 +46,12 @@ defmodule AshScim.Encoder do
           {key, value} -> Elixir.Map.put(acc, key, value)
         end
       end)
+
+    # Advertise extension schema URNs in `schemas` only when their object was emitted.
+    present_extensions =
+      Enum.filter(AshScim.Info.scim_extension_urns(resource), &Elixir.Map.has_key?(body, &1))
+
+    body = Elixir.Map.put(body, "schemas", [schema | present_extensions])
 
     if AshScim.Info.scim_meta?(resource) do
       Elixir.Map.put(body, "meta", build_meta(record, id, opts))
@@ -86,6 +92,19 @@ defmodule AshScim.Encoder do
       :skip -> :skip
       {:ok, value} -> {to_string(name), value}
     end
+  end
+
+  defp encode_mapping(%Extension{urn: urn} = ext, record) do
+    inner =
+      (ext.maps ++ ext.complexes ++ ext.multivalueds)
+      |> Enum.reduce(%{}, fn mapping, acc ->
+        case encode_mapping(mapping, record) do
+          :skip -> acc
+          {k, v} -> Elixir.Map.put(acc, k, v)
+        end
+      end)
+
+    if inner == %{}, do: :skip, else: {urn, inner}
   end
 
   defp encode_mapping(%Complex{name: name, maps: maps}, record) do

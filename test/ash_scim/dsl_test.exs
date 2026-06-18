@@ -33,8 +33,17 @@ defmodule AshScim.DslTest do
                  relationship: :emails,
                  mirror_primary_to: :email,
                  maps: emails_maps
+               },
+               %AshScim.Dsl.Extension{
+                 urn: "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User",
+                 complexes: [%Complex{name: :manager, maps: manager_maps}]
                }
              ] = mappings
+
+      assert [
+               %Map{name: :value, attribute: :manager_value},
+               %Map{name: :displayName, attribute: :manager_display_name}
+             ] = manager_maps
 
       assert [
                %Map{name: :givenName, attribute: :first_name},

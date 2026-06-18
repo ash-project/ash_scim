@@ -12,7 +12,7 @@ defmodule AshScim.Discovery do
   to validate that user/group attributes line up.
   """
 
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
 
   @schema_schema "urn:ietf:params:scim:schemas:core:2.0:Schema"
   @resource_type_schema "urn:ietf:params:scim:schemas:core:2.0:ResourceType"
@@ -21,7 +21,7 @@ defmodule AshScim.Discovery do
   @doc "Build a `ListResponse` of every Schema document for the given resources."
   @spec schemas([module()]) :: %{String.t() => term()}
   def schemas(resources) do
-    list = Enum.map(resources, &schema/1)
+    list = Enum.map(resources, &schema/1) ++ Enum.flat_map(resources, &extension_schemas/1)
 
     %{
       "schemas" => [@list_response_schema],
@@ -65,7 +65,7 @@ defmodule AshScim.Discovery do
     schema_id = AshScim.Info.scim_schema!(resource)
     path = AshScim.Info.scim_path!(resource)
 
-    %{
+    base = %{
       "schemas" => [@resource_type_schema],
       "id" => name,
       "name" => name,
@@ -73,14 +73,46 @@ defmodule AshScim.Discovery do
       "description" => "#{name} resource",
       "schema" => schema_id
     }
+
+    case AshScim.Info.scim_extension_urns(resource) do
+      [] ->
+        base
+
+      urns ->
+        Elixir.Map.put(
+          base,
+          "schemaExtensions",
+          Enum.map(urns, &%{"schema" => &1, "required" => false})
+        )
+    end
   end
 
   defp resource_type_name(:user), do: "User"
   defp resource_type_name(:group), do: "Group"
 
+  # One Schema document per declared extension URN (core attrs live in the
+  # resource's own schema and are excluded here).
+  defp extension_schemas(resource) do
+    resource
+    |> AshScim.Info.scim_mappings()
+    |> Enum.filter(&match?(%Extension{}, &1))
+    |> Enum.map(fn %Extension{urn: urn} = ext ->
+      %{
+        "schemas" => [@schema_schema],
+        "id" => urn,
+        "name" => urn |> String.split(":") |> List.last(),
+        "description" => "SCIM extension schema #{urn}",
+        "attributes" =>
+          (ext.maps ++ ext.complexes ++ ext.multivalueds)
+          |> Enum.map(&attribute_definition(&1, resource))
+      }
+    end)
+  end
+
   defp attribute_definitions(resource) do
     resource
     |> AshScim.Info.scim_mappings()
+    |> Enum.reject(&match?(%Extension{}, &1))
     |> Enum.map(&attribute_definition(&1, resource))
   end
 

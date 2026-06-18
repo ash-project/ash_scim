@@ -407,11 +407,13 @@ defmodule AshScim.RouterTest do
       assert conn.status == 200
       decoded = body(conn)
       assert decoded["schemas"] == ["urn:ietf:params:scim:api:messages:2.0:ListResponse"]
-      assert decoded["totalResults"] == 2
+      # Two resource schemas (User, Group) plus the User's enterprise extension schema.
+      assert decoded["totalResults"] == 3
 
       ids = Enum.map(decoded["Resources"], & &1["id"])
       assert "urn:ietf:params:scim:schemas:core:2.0:User" in ids
       assert "urn:ietf:params:scim:schemas:core:2.0:Group" in ids
+      assert "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User" in ids
     end
 
     test "returns a single Schema document by id" do

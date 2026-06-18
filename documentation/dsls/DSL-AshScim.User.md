@@ -48,6 +48,12 @@ describe how Ash attributes are projected to and from SCIM JSON.
    * map
  * [multivalued](#scim-multivalued)
    * map
+ * [extension](#scim-extension)
+   * map
+   * complex
+     * map
+   * multivalued
+     * map
 
 
 
@@ -244,6 +250,217 @@ Target: `AshScim.Dsl.Map`
 ### Introspection
 
 Target: `AshScim.Dsl.Multivalued`
+
+### scim.extension
+```elixir
+extension urn
+```
+
+
+Map attributes that live under a SCIM schema-extension URN (RFC 7643 §3.3), e.g. the enterprise user extension.
+
+### Nested DSLs
+ * [map](#scim-extension-map)
+ * [complex](#scim-extension-complex)
+   * map
+ * [multivalued](#scim-extension-multivalued)
+   * map
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`urn`](#scim-extension-urn){: #scim-extension-urn .spark-required} | `String.t` |  | The SCIM schema-extension URN this object is keyed under, e.g. `urn:ietf:params:scim:schemas:extension:enterprise:2.0:User`. |
+
+
+
+### scim.extension.map
+```elixir
+map name
+```
+
+
+Map a SCIM attribute name to an Ash attribute (or a static value).
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#scim-extension-map-name){: #scim-extension-map-name .spark-required} | `atom` |  | The SCIM attribute name (camelCase per RFC 7643), e.g. `:userName`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`attribute`](#scim-extension-map-attribute){: #scim-extension-map-attribute } | `atom` |  | The Ash attribute on this resource that backs the SCIM attribute. |
+| [`value`](#scim-extension-map-value){: #scim-extension-map-value } | `any` |  | A static value to emit for this SCIM attribute. Useful inside multivalued mappings, e.g. `map :primary, value: true`. Mutually exclusive with `attribute`. |
+| [`case_exact?`](#scim-extension-map-case_exact?){: #scim-extension-map-case_exact? } | `boolean` |  | RFC 7643 `caseExact`. Defaults to false for strings. |
+| [`returned`](#scim-extension-map-returned){: #scim-extension-map-returned } | `:always \| :never \| :default \| :request` |  | RFC 7643 `returned`. Defaults to `:default`. |
+| [`mutability`](#scim-extension-map-mutability){: #scim-extension-map-mutability } | `:read_only \| :read_write \| :immutable \| :write_only` |  | RFC 7643 `mutability`. Defaults to `:read_write`. |
+| [`uniqueness`](#scim-extension-map-uniqueness){: #scim-extension-map-uniqueness } | `:none \| :server \| :global` |  | RFC 7643 `uniqueness`. Defaults to `:none`. |
+
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Map`
+
+### scim.extension.complex
+```elixir
+complex name
+```
+
+
+Declare a SCIM complex (object-valued) attribute.
+
+### Nested DSLs
+ * [map](#scim-extension-complex-map)
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#scim-extension-complex-name){: #scim-extension-complex-name .spark-required} | `atom` |  | The SCIM attribute name for the complex object, e.g. `:name`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`returned`](#scim-extension-complex-returned){: #scim-extension-complex-returned } | `:always \| :never \| :default \| :request` |  | RFC 7643 `returned`. Defaults to `:default`. |
+| [`mutability`](#scim-extension-complex-mutability){: #scim-extension-complex-mutability } | `:read_only \| :read_write \| :immutable \| :write_only` |  | RFC 7643 `mutability`. Defaults to `:read_write`. |
+
+
+### scim.extension.complex.map
+```elixir
+map name
+```
+
+
+Map a SCIM attribute name to an Ash attribute (or a static value).
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#scim-extension-complex-map-name){: #scim-extension-complex-map-name .spark-required} | `atom` |  | The SCIM attribute name (camelCase per RFC 7643), e.g. `:userName`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`attribute`](#scim-extension-complex-map-attribute){: #scim-extension-complex-map-attribute } | `atom` |  | The Ash attribute on this resource that backs the SCIM attribute. |
+| [`value`](#scim-extension-complex-map-value){: #scim-extension-complex-map-value } | `any` |  | A static value to emit for this SCIM attribute. Useful inside multivalued mappings, e.g. `map :primary, value: true`. Mutually exclusive with `attribute`. |
+| [`case_exact?`](#scim-extension-complex-map-case_exact?){: #scim-extension-complex-map-case_exact? } | `boolean` |  | RFC 7643 `caseExact`. Defaults to false for strings. |
+| [`returned`](#scim-extension-complex-map-returned){: #scim-extension-complex-map-returned } | `:always \| :never \| :default \| :request` |  | RFC 7643 `returned`. Defaults to `:default`. |
+| [`mutability`](#scim-extension-complex-map-mutability){: #scim-extension-complex-map-mutability } | `:read_only \| :read_write \| :immutable \| :write_only` |  | RFC 7643 `mutability`. Defaults to `:read_write`. |
+| [`uniqueness`](#scim-extension-complex-map-uniqueness){: #scim-extension-complex-map-uniqueness } | `:none \| :server \| :global` |  | RFC 7643 `uniqueness`. Defaults to `:none`. |
+
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Map`
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Complex`
+
+### scim.extension.multivalued
+```elixir
+multivalued name
+```
+
+
+Declare a SCIM multi-valued attribute (an array of complex objects).
+
+### Nested DSLs
+ * [map](#scim-extension-multivalued-map)
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#scim-extension-multivalued-name){: #scim-extension-multivalued-name .spark-required} | `atom` |  | The SCIM attribute name for the multivalued array, e.g. `:emails`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`relationship`](#scim-extension-multivalued-relationship){: #scim-extension-multivalued-relationship } | `atom` |  | The name of a `has_many` relationship on this resource that backs this multivalued attribute. When set, encoding loads the relationship and emits one array element per related record; PATCH operations on this attribute manipulate the related rows directly. Sub-`map` declarations reference attributes on the *related* resource. Either `relationship:` or `mirror_primary_to:` must be set. |
+| [`mirror_primary_to`](#scim-extension-multivalued-mirror_primary_to){: #scim-extension-multivalued-mirror_primary_to } | `atom` |  | Names a scalar attribute on *this* resource that mirrors the SCIM `value` of the multivalued's *primary* entry. With `relationship:` also set, the relationship is the source of truth for SCIM output and `mirror_primary_to:` keeps the parent scalar in sync (e.g. for use as a login identity). Without `relationship:`, the parent scalar **is** the source of truth: SCIM `emails` is collapsed to one element on read, and writes pick the primary entry's value into the scalar. The other sub-attributes (`primary`, `type`) can be filled in via static `value:` decorators on sub-`map`s. The primary entry is picked as: the entry with `primary: true` if one exists; otherwise the lexicographically first entry by `value`. Either `relationship:` or `mirror_primary_to:` must be set. |
+| [`returned`](#scim-extension-multivalued-returned){: #scim-extension-multivalued-returned } | `:always \| :never \| :default \| :request` |  | RFC 7643 `returned`. Defaults to `:default`. |
+| [`mutability`](#scim-extension-multivalued-mutability){: #scim-extension-multivalued-mutability } | `:read_only \| :read_write \| :immutable \| :write_only` |  | RFC 7643 `mutability`. Defaults to `:read_write`. |
+
+
+### scim.extension.multivalued.map
+```elixir
+map name
+```
+
+
+Map a SCIM attribute name to an Ash attribute (or a static value).
+
+
+
+
+
+### Arguments
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`name`](#scim-extension-multivalued-map-name){: #scim-extension-multivalued-map-name .spark-required} | `atom` |  | The SCIM attribute name (camelCase per RFC 7643), e.g. `:userName`. |
+### Options
+
+| Name | Type | Default | Docs |
+|------|------|---------|------|
+| [`attribute`](#scim-extension-multivalued-map-attribute){: #scim-extension-multivalued-map-attribute } | `atom` |  | The Ash attribute on this resource that backs the SCIM attribute. |
+| [`value`](#scim-extension-multivalued-map-value){: #scim-extension-multivalued-map-value } | `any` |  | A static value to emit for this SCIM attribute. Useful inside multivalued mappings, e.g. `map :primary, value: true`. Mutually exclusive with `attribute`. |
+| [`case_exact?`](#scim-extension-multivalued-map-case_exact?){: #scim-extension-multivalued-map-case_exact? } | `boolean` |  | RFC 7643 `caseExact`. Defaults to false for strings. |
+| [`returned`](#scim-extension-multivalued-map-returned){: #scim-extension-multivalued-map-returned } | `:always \| :never \| :default \| :request` |  | RFC 7643 `returned`. Defaults to `:default`. |
+| [`mutability`](#scim-extension-multivalued-map-mutability){: #scim-extension-multivalued-map-mutability } | `:read_only \| :read_write \| :immutable \| :write_only` |  | RFC 7643 `mutability`. Defaults to `:read_write`. |
+| [`uniqueness`](#scim-extension-multivalued-map-uniqueness){: #scim-extension-multivalued-map-uniqueness } | `:none \| :server \| :global` |  | RFC 7643 `uniqueness`. Defaults to `:none`. |
+
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Map`
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Multivalued`
+
+
+
+
+### Introspection
+
+Target: `AshScim.Dsl.Extension`
 
 
 

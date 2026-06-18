@@ -5,7 +5,7 @@
 defmodule AshScim.Dsl do
   @moduledoc false
 
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
 
   @map_entity %Spark.Dsl.Entity{
     name: :map,
@@ -31,6 +31,20 @@ defmodule AshScim.Dsl do
     describe: "Declare a SCIM multi-valued attribute (an array of complex objects).",
     schema: Multivalued.schema(),
     entities: [maps: [@map_entity]]
+  }
+
+  @extension_entity %Spark.Dsl.Entity{
+    name: :extension,
+    target: AshScim.Dsl.Extension,
+    args: [:urn],
+    describe:
+      "Map attributes that live under a SCIM schema-extension URN (RFC 7643 §3.3), e.g. the enterprise user extension.",
+    schema: Extension.schema(),
+    entities: [
+      maps: [@map_entity],
+      complexes: [@complex_entity],
+      multivalueds: [@multivalued_entity]
+    ]
   }
 
   @doc false
@@ -84,7 +98,7 @@ defmodule AshScim.Dsl do
             "Emit the standard SCIM `meta` object (created, lastModified, location, resourceType)."
         ]
       ],
-      entities: [@map_entity, @complex_entity, @multivalued_entity]
+      entities: [@map_entity, @complex_entity, @multivalued_entity, @extension_entity]
     }
   end
 

@@ -14,7 +14,7 @@ defmodule AshScim.Info do
     extension: AshScim.User,
     sections: [:scim]
 
-  alias AshScim.Dsl.{Complex, Map, Multivalued}
+  alias AshScim.Dsl.{Complex, Extension, Map, Multivalued}
 
   @doc """
   Returns `true` if `resource` carries either the `AshScim.User` or
@@ -44,8 +44,17 @@ defmodule AshScim.Info do
   Returns all SCIM mapping entities (maps, complex, multivalued) declared on
   the resource, preserving declaration order.
   """
-  @spec scim_mappings(module()) :: [Map.t() | Complex.t() | Multivalued.t()]
+  @spec scim_mappings(module()) :: [Map.t() | Complex.t() | Multivalued.t() | Extension.t()]
   def scim_mappings(resource) do
     Spark.Dsl.Extension.get_entities(resource, [:scim])
+  end
+
+  @doc "Returns the declared SCIM schema-extension URNs for `resource`."
+  @spec scim_extension_urns(module()) :: [String.t()]
+  def scim_extension_urns(resource) do
+    resource
+    |> scim_mappings()
+    |> Enum.filter(&match?(%Extension{}, &1))
+    |> Enum.map(& &1.urn)
   end
 end

@@ -27,6 +27,13 @@ defmodule AshScim.Test.Example.User do
       map :primary, attribute: :primary
       map :type, attribute: :type
     end
+
+    extension "urn:ietf:params:scim:schemas:extension:enterprise:2.0:User" do
+      complex :manager do
+        map :value, attribute: :manager_value
+        map :displayName, attribute: :manager_display_name
+      end
+    end
   end
 
   actions do
@@ -40,6 +47,8 @@ defmodule AshScim.Test.Example.User do
     attribute :first_name, :string, public?: true
     attribute :last_name, :string, public?: true
     attribute :scim_external_id, :string, public?: true
+    attribute :manager_value, :string, public?: true
+    attribute :manager_display_name, :string, public?: true
   end
 
   relationships do

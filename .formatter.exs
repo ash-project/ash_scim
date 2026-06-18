@@ -9,6 +9,8 @@ spark_locals_without_parens = [
   complex: 2,
   create_action: 1,
   destroy_action: 1,
+  extension: 1,
+  extension: 2,
   map: 1,
   map: 2,
   meta?: 1,
