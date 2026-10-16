@@ -45,8 +45,7 @@ defmodule AshScim.MixProject do
         "REUSE Compliance" => "https://api.reuse.software/info/github.com/ash-project/ash_scim"
       },
       source_url: "https://github.com/ash-project/ash_scim",
-      files:
-        ~w[lib .formatter.exs mix.exs README* LICENSE* CHANGELOG* documentation usage-rules.md]
+      files: ~w[lib .formatter.exs mix.exs README* LICENSE* CHANGELOG* documentation]
     ]
   end
 
