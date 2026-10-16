@@ -4,6 +4,17 @@
 
 import Config
 
+if config_env() == :dev do
+  config :git_ops,
+    mix_project: AshScim.MixProject,
+    github_handle_lookup?: true,
+    changelog_file: "CHANGELOG.md",
+    repository_url: "https://github.com/ash-project/ash_scim",
+    manage_mix_version?: true,
+    manage_readme_version: "documentation/tutorials/get-started.md",
+    version_tag_prefix: "v"
+end
+
 config :ash,
   allow_forbidden_field_for_relationships_by_default?: true,
   include_embedded_source_by_default?: false,
