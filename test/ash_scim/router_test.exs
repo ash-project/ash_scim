@@ -474,9 +474,34 @@ defmodule AshScim.RouterTest do
     end
   end
 
+  describe "discovery endpoints" do
+    test "reject non-GET methods with 405" do
+      paths = [
+        "/ServiceProviderConfig",
+        "/Schemas",
+        "/Schemas/urn:ietf:params:scim:schemas:core:2.0:User",
+        "/ResourceTypes",
+        "/ResourceTypes/User"
+      ]
+
+      for path <- paths, method <- ["POST", "PUT", "PATCH", "DELETE"] do
+        conn = request(method, path)
+
+        assert conn.status == 405, "expected 405 for #{method} #{path}, got #{conn.status}"
+        assert get_resp_header(conn, "allow") == ["GET"]
+        assert body(conn)["status"] == "405"
+      end
+    end
+  end
+
   describe "unknown paths" do
     test "returns 404" do
       conn = request("GET", "/NotARealEndpoint")
+      assert conn.status == 404
+    end
+
+    test "returns 404 for unknown sub-paths of discovery endpoints" do
+      conn = request("GET", "/ServiceProviderConfig/nope")
       assert conn.status == 404
     end
   end

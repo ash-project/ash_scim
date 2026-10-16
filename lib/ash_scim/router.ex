@@ -209,6 +209,15 @@ defmodule AshScim.Router do
     end
   end
 
+  # Discovery endpoints are read-only; their GETs are all matched above.
+  defp dispatch(%Plug.Conn{path_info: [endpoint | rest]} = conn, _opts)
+       when (endpoint == "ServiceProviderConfig" and rest == []) or
+              (endpoint in ["Schemas", "ResourceTypes"] and length(rest) <= 1) do
+    conn
+    |> Plug.Conn.put_resp_header("allow", "GET")
+    |> send_error(405, "method not allowed")
+  end
+
   defp dispatch(%Plug.Conn{method: method, path_info: [type | rest]} = conn, opts) do
     case Elixir.Map.fetch(opts.routing_table, type) do
       {:ok, resource} -> dispatch_resource(method, rest, resource, conn, opts)
