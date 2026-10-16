@@ -143,7 +143,7 @@ defmodule AshScim.MixProject do
       {:picosat_elixir, "~> 0.2", only: [:dev, :test]},
       {:simple_sat, "~> 0.1", only: [:dev, :test]},
       {:sobelow, "~> 0.12", only: [:dev, :test]},
-      {:sourceror, "~> 1.8"},
+      {:sourceror, "~> 1.8", optional: true},
       {:usage_rules, "~> 1.2", only: [:dev]}
     ]
   end
