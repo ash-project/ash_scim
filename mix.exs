@@ -29,7 +29,13 @@ defmodule AshScim.MixProject do
       ],
       docs: &docs/0,
       aliases: aliases(),
-      description: @description
+      description: @description,
+      hex: [
+        # assent's Sign in with Apple advisory. The fix is assent 0.3.2, which
+        # ash_authentication 4.x can't use (it pins `< 0.3.0`). ash_authentication
+        # is an optional dev/test dependency here, so this lock never reaches users.
+        ignore_advisories: ["EEF-CVE-2026-117656"]
+      ]
     ]
   end
 
