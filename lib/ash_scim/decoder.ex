@@ -40,6 +40,49 @@ defmodule AshScim.Decoder do
     end)
   end
 
+  @doc """
+  Returns the SCIM names of required, client-writable attributes that `body`
+  leaves out (or sets to `null`). Extension attributes are qualified with
+  their URN.
+
+  RFC 7644 §3.5.1: "If an attribute is "required", clients MUST specify the
+  attribute in the PUT request." Without this check a PUT omitting a required
+  attribute would silently keep its current value.
+
+  Only top-level attributes are checked, matching what `/Schemas` advertises:
+  complex and multivalued attributes are never marked required.
+  """
+  @spec missing_required(module(), %{String.t() => term()}) :: [String.t()]
+  def missing_required(resource, %{} = body) do
+    resource
+    |> AshScim.Info.scim_mappings()
+    |> Enum.flat_map(fn
+      %Map{} = m ->
+        missing_required_map(resource, m, body, nil)
+
+      %Extension{urn: urn, maps: maps} ->
+        inner =
+          case Elixir.Map.get(body, urn) do
+            %{} = inner -> inner
+            _ -> %{}
+          end
+
+        Enum.flat_map(maps, &missing_required_map(resource, &1, inner, urn))
+
+      _ ->
+        []
+    end)
+  end
+
+  defp missing_required_map(resource, %Map{name: name, mutability: mutability} = m, body, urn) do
+    if mutability != :read_only and AshScim.Info.scim_required?(resource, m) and
+         is_nil(Elixir.Map.get(body, to_string(name))) do
+      [if(urn, do: "#{urn}:#{name}", else: to_string(name))]
+    else
+      []
+    end
+  end
+
   defp apply_mapping(%Map{} = m, body, acc) do
     case decode_simple_map(m, body) do
       addition when addition == %{} -> acc

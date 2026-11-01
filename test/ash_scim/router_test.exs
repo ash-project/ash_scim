@@ -288,6 +288,44 @@ defmodule AshScim.RouterTest do
       assert decoded["active"] == false
       assert decoded["name"]["givenName"] == "Alicia"
     end
+
+    test "rejects a replacement that omits a required attribute" do
+      user = create_user!()
+
+      body = Jason.encode!(%{"active" => false, "externalId" => "okta-1"})
+
+      conn = request("PUT", "/Users/#{user.id}", body)
+
+      assert conn.status == 400
+      assert body(conn)["scimType"] == "invalidValue"
+      assert body(conn)["detail"] =~ "userName"
+      assert Ash.get!(User, user.id).active == true
+    end
+
+    test "rejects a replacement that sets a required attribute to null" do
+      user = create_user!()
+
+      conn = request("PUT", "/Users/#{user.id}", Jason.encode!(%{"userName" => nil}))
+
+      assert conn.status == 400
+      assert body(conn)["scimType"] == "invalidValue"
+    end
+
+    test "rejects a group replacement that omits displayName" do
+      group = Group |> Ash.Changeset.for_create(:create, %{name: "Engineering"}) |> Ash.create!()
+
+      conn = request("PUT", "/Groups/#{group.id}", Jason.encode!(%{"externalId" => "g-1"}))
+
+      assert conn.status == 400
+      assert body(conn)["scimType"] == "invalidValue"
+      assert body(conn)["detail"] =~ "displayName"
+    end
+
+    test "returns 404 for an unknown id even when required attributes are missing" do
+      conn = request("PUT", "/Users/00000000-0000-0000-0000-000000000000", Jason.encode!(%{}))
+
+      assert conn.status == 404
+    end
   end
 
   describe "PATCH /<type>/:id" do

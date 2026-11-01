@@ -445,28 +445,39 @@ defmodule AshScim.Router do
         decoded = Decoder.decode(resource, body)
         env = scim_env(conn)
 
-        case Ash.get(resource, id, scim_opts([], env)) do
-          {:ok, record} ->
-            record
-            |> Ash.Changeset.for_update(
-              update_action(resource),
-              decoded.attrs,
-              scim_changeset_opts(env)
-            )
-            |> apply_relationship_inputs(decoded.relationships)
-            |> Ash.update(scim_opts([], env))
-            |> case do
-              {:ok, updated} ->
-                reloaded = reload_for_relationships(updated, decoded.relationships, env)
+        # Look the record up first so an unknown id is a 404 regardless of
+        # the body, then enforce RFC 7644 §3.5.1 (required attributes MUST
+        # be present on PUT) before running the update.
+        with {:ok, record} <- Ash.get(resource, id, scim_opts([], env)),
+             [] <- Decoder.missing_required(resource, body) do
+          record
+          |> Ash.Changeset.for_update(
+            update_action(resource),
+            decoded.attrs,
+            scim_changeset_opts(env)
+          )
+          |> apply_relationship_inputs(decoded.relationships)
+          |> Ash.update(scim_opts([], env))
+          |> case do
+            {:ok, updated} ->
+              reloaded = reload_for_relationships(updated, decoded.relationships, env)
 
-                send_json(conn, 200, encode_and_project(conn, reloaded, opts))
+              send_json(conn, 200, encode_and_project(conn, reloaded, opts))
 
-              {:error, error} ->
-                send_changeset_error(conn, error)
-            end
-
+            {:error, error} ->
+              send_changeset_error(conn, error)
+          end
+        else
           {:error, error} ->
             send_get_error(conn, error)
+
+          [_ | _] = missing ->
+            send_error(
+              conn,
+              400,
+              "missing required attribute(s): #{Enum.join(missing, ", ")}",
+              :invalidValue
+            )
         end
 
       {:halted, conn} ->

@@ -121,7 +121,7 @@ defmodule AshScim.Discovery do
       "name" => to_string(m.name),
       "type" => map_type(m, resource),
       "multiValued" => false,
-      "required" => map_required?(m, resource),
+      "required" => AshScim.Info.scim_required?(resource, m),
       "caseExact" => m.case_exact? || false,
       "mutability" => mutability(m.mutability),
       "returned" => returned(m.returned),
@@ -194,15 +194,6 @@ defmodule AshScim.Discovery do
   defp ash_type_to_scim(Ash.Type.Date), do: "dateTime"
   defp ash_type_to_scim(Ash.Type.Binary), do: "binary"
   defp ash_type_to_scim(_), do: "string"
-
-  defp map_required?(%Map{attribute: nil}, _resource), do: false
-
-  defp map_required?(%Map{attribute: attr}, resource) do
-    case Ash.Resource.Info.attribute(resource, attr) do
-      %{allow_nil?: false} -> true
-      _ -> false
-    end
-  end
 
   defp mutability(nil), do: "readWrite"
   defp mutability(:read_only), do: "readOnly"
